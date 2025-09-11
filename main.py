@@ -1,4 +1,4 @@
-from flask import Flask, request
+إنشاء from flask import Flask, request
 import telebot
 import os
 
@@ -33,7 +33,7 @@ def index():
 
 if __name__ == "__main__":
     # Set webhook automatically if running on Render
-    WEBHOOK_URL = os.environ.get("RENDER_EXTERNAL_URL") + f"/{TOKEN}"
+    WEBHOOK_URL = "https://telegram-bot-xsto.onrender.com" + f"/{TOKEN}"
     bot.remove_webhook()
     bot.set_webhook(url=WEBHOOK_URL)
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
