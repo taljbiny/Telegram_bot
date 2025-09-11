@@ -39,13 +39,13 @@ def admin_reply(message):
     try:
         user_id = int(parts[1])
         reply_text = parts[2]
-        bot.send_message(user_id, f"📩 رد من الأدمن:\n{reply_text}")
+        bot.send_message(user_id, reply_text)  # 🔹 بدون كلمة "رد من الأدمن"
         bot.send_message(message.chat.id, "✅ تم إرسال الرسالة للمستخدم.")
     except ValueError:
         bot.send_message(message.chat.id, "⚠️ معرف المستخدم غير صالح.")
 
 # ======= التعامل مع الأزرار =======
-@bot.message_handler(func=lambda message: True)
+@bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_buttons(message):
     text = message.text
     if text == "📝 إنشاء حساب":
@@ -60,7 +60,6 @@ def handle_buttons(message):
     elif text == "🏠 القائمة الرئيسية":
         main_menu(message.chat.id)
     else:
-        # أي رسالة أخرى تصل للادمن
         bot.send_message(ADMIN_ID, f"رسالة من {message.from_user.username} ({message.from_user.id}): {message.text}")
 
 # ======= إنشاء الحساب =======
@@ -89,12 +88,19 @@ def deposit_enter_amount(message, username):
         return
 
     bot.send_message(message.chat.id,
-                     f"💳 رقم محفظة سيرياتيل كاش لإتمام الإيداع: {SERIATEL_CASH_NUMBER}\n📸 بعد الدفع، أرسل صورة التأكيد:")
+                     f"💳 رقم محفظة سيرياتيل كاش لإتمام الإيداع: {SERIATEL_CASH_NUMBER}\n📸 بعد الدفع، أرسل صورة التأكيد أو إشعار العملية:")
     bot.register_next_step_handler(message, deposit_confirm, username, amount)
 
 def deposit_confirm(message, username, amount):
+    if message.content_type == "photo":
+        # إذا بعت صورة، نحولها للأدمن
+        file_id = message.photo[-1].file_id
+        bot.send_photo(ADMIN_ID, file_id,
+                       caption=f"💰 طلب إيداع:\nUsername: {username}\nالمبلغ: {amount} ل.س\nمن المستخدم: {message.from_user.username} ({message.from_user.id})")
+    else:
+        bot.send_message(ADMIN_ID, f"💰 طلب إيداع:\nUsername: {username}\nالمبلغ: {amount} ل.س\nتأكيد: {message.text}\nمن المستخدم: {message.from_user.username} ({message.from_user.id})")
+
     bot.send_message(message.chat.id, f"✅ تم استلام الإيداع بنجاح.\nUsername: {username}\nالمبلغ: {amount} ل.س")
-    bot.send_message(ADMIN_ID, f"💰 طلب إيداع:\nUsername: {username}\nالمبلغ: {amount} ل.س\nصورة التأكيد: {message.text}\nمن المستخدم: {message.from_user.username} ({message.from_user.id})")
     bot.send_message(message.chat.id, "🏠 للعودة للقائمة الرئيسية اضغط: 🏠 القائمة الرئيسية")
 
 # ======= السحب =======
@@ -124,12 +130,12 @@ def withdraw_enter_amount(message, username):
 
 def withdraw_enter_wallet(message, username, amount):
     method = message.text
-    bot.send_message(message.chat.id, "📌 أرسل رقم محفظتك ليتم تواصل الادمن معك:")
+    bot.send_message(message.chat.id, "📌 أرسل رقم محفظتك ليتم تحويل المبلغ:")
     bot.register_next_step_handler(message, withdraw_confirm, username, amount, method)
 
 def withdraw_confirm(message, username, amount, method):
     wallet = message.text
-    bot.send_message(message.chat.id, f"✅ تم استلام طلب السحب.\nUsername: {username}\nالمبلغ: {amount} ل.س\nطريقة الدفع: {method}\nسيتم التواصل معك")
+    bot.send_message(message.chat.id, "✅ تم استلام طلب السحب\n📌 طلبك قيد المعالجة، عند الانتهاء سنرسل لك تأكيد العملية")
     bot.send_message(ADMIN_ID, f"💸 طلب سحب:\nUsername: {username}\nالمبلغ: {amount} ل.س\nطريقة الدفع: {method}\nرقم المحفظة: {wallet}\nمن المستخدم: {message.from_user.username} ({message.from_user.id})")
     bot.send_message(message.chat.id, "🏠 للعودة للقائمة الرئيسية اضغط: 🏠 القائمة الرئيسية")
 
