@@ -1,4 +1,4 @@
-إنشاء from flask import Flask, request
+from flask import Flask, request
 import telebot
 import os
 
@@ -13,7 +13,7 @@ app = Flask(__name__)
 def send_welcome(message):
     bot.send_message(message.chat.id, "أهلاً! اختر من القائمة: \n1. إنشاء حساب \n2. إيداع \n3. سحب")
 
-# Echo any message to admin
+# Forward any message to admin
 @bot.message_handler(func=lambda m: True)
 def forward_to_admin(message):
     bot.send_message(ADMIN_ID, f"رسالة من {message.from_user.username} ({message.from_user.id}): {message.text}")
@@ -26,14 +26,15 @@ def webhook():
     bot.process_new_updates([update])
     return "!", 200
 
-# Root route to test server
+# Root route
 @app.route("/")
 def index():
     return "بوت Telegram شغال على Render!", 200
 
 if __name__ == "__main__":
-    # Set webhook automatically if running on Render
-    WEBHOOK_URL = "https://telegram-bot-xsto.onrender.com" + f"/{TOKEN}"
-    bot.remove_webhook()
-    bot.set_webhook(url=WEBHOOK_URL)
+    # Set webhook only if running on Render
+    if os.environ.get("RENDER_EXTERNAL_URL"):
+        WEBHOOK_URL = os.environ.get("RENDER_EXTERNAL_URL") + f"/{TOKEN}"
+        bot.remove_webhook()
+        bot.set_webhook(url=WEBHOOK_URL)
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
