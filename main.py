@@ -3,7 +3,7 @@ from telebot import types
 from flask import Flask, request
 
 # ====== الإعدادات ======
-TOKEN = "ضع_التوكن_هنا"
+TOKEN = "8317743306:AAFGH1Acxb6fIwZ0o0T2RvNjezQFW8KWcw8"
 ADMIN_ID = 7625893170
 bot = telebot.TeleBot(TOKEN)
 server = Flask(__name__)
@@ -149,7 +149,7 @@ def getMessage():
 @server.route("/")
 def webhook():
     bot.remove_webhook()
-    bot.set_webhook(url="https://telegram-bot-jt93.onrender.com/" + TOKEN)
+    bot.set_webhook(url="https://telegram-bot-xsto.onrender.com/" + TOKEN)
     return "!", 200
 
 if __name__ == "__main__":
