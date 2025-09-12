@@ -98,7 +98,7 @@ def process_payment_method(message, account_name, amount):
     if method == "📲 سيرياتيل كاش":
         msg = bot.send_message(
             message.chat.id,
-            "💳 أرسل المبلغ إلى الرقم التالي:\n📱 0996099355\nبعد الدفع أرسل صورة التأكيد.",
+            "💳 أرسل المبلغ إلى الرقم التالي:\n📱 82492253\nبعد الدفع أرسل صورة التأكيد.",
             reply_markup=back_button()
         )
         bot.register_next_step_handler(msg, confirm_payment, account_name, amount, method)
