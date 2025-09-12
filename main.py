@@ -50,7 +50,10 @@ def process_account_name(message):
         return back_to_menu(message)
 
     account_name = message.text
-    bot.send_message(ADMIN_ID, f"📥 طلب إنشاء حساب جديد:\nاسم الحساب: {account_name}\nمن المستخدم: {message.from_user.id}")
+    bot.send_message(
+        ADMIN_ID,
+        f"📥 طلب إنشاء حساب جديد:\nاسم الحساب: {account_name}\nمن المستخدم: {message.from_user.id}"
+    )
     bot.send_message(message.chat.id, f"✅ تم استلام طلب إنشاء الحساب: {account_name}\nبانتظار رد الادمن.", reply_markup=main_menu())
 
 # ====== إيداع ======
@@ -109,7 +112,10 @@ def confirm_payment(message, account_name, amount, method):
         return back_to_menu(message)
 
     if message.content_type == "photo":
-        bot.send_message(ADMIN_ID, f"📥 عملية إيداع:\nاسم الحساب: {account_name}\nالمبلغ: {amount}\nالطريقة: {method}")
+        bot.send_message(
+            ADMIN_ID,
+            f"📥 عملية إيداع:\nاسم الحساب: {account_name}\nالمبلغ: {amount}\nالطريقة: {method}\nمن المستخدم: {message.from_user.id}"
+        )
         bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption="📸 صورة تأكيد الدفع")
         bot.send_message(message.chat.id, "✅ تم استلام عملية الإيداع.\nطلبك قيد المعالجة.", reply_markup=main_menu())
     else:
@@ -118,19 +124,36 @@ def confirm_payment(message, account_name, amount, method):
 
 # ====== سحب ======
 @bot.message_handler(func=lambda message: message.text == "💵 سحب")
-def withdraw(message):
-    msg = bot.send_message(message.chat.id, "📛 أرسل اسم حسابك:", reply_markup=back_button())
-    bot.register_next_step_handler(msg, process_withdraw_name)
+def withdraw_options(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row("📲 سيرياتيل كاش")
+    markup.row("🏦 شام كاش", "💳 حوالة")
+    markup.row("🔙 رجوع للقائمة الرئيسية")
+    bot.send_message(message.chat.id, "اختر طريقة السحب:", reply_markup=markup)
+    bot.register_next_step_handler(message, withdraw_method)
 
-def process_withdraw_name(message):
+def withdraw_method(message):
+    if message.text == "🔙 رجوع للقائمة الرئيسية":
+        return back_to_menu(message)
+
+    method = message.text
+    if method == "📲 سيرياتيل كاش":
+        msg = bot.send_message(message.chat.id, "📛 أرسل اسم حسابك للسحب:", reply_markup=back_button())
+        bot.register_next_step_handler(msg, process_withdraw_name, method)
+    elif method in ["🏦 شام كاش", "💳 حوالة"]:
+        bot.send_message(message.chat.id, "❌ هذه الطريقة غير متوفرة حالياً.", reply_markup=main_menu())
+    else:
+        bot.send_message(message.chat.id, "⚠️ خيار غير صحيح.", reply_markup=main_menu())
+
+def process_withdraw_name(message, method):
     if message.text == "🔙 رجوع للقائمة الرئيسية":
         return back_to_menu(message)
 
     account_name = message.text
     msg = bot.send_message(message.chat.id, "💵 أرسل المبلغ المطلوب (أقل عملية 25,000 ل.س):", reply_markup=back_button())
-    bot.register_next_step_handler(msg, process_withdraw_amount, account_name)
+    bot.register_next_step_handler(msg, process_withdraw_amount, account_name, method)
 
-def process_withdraw_amount(message, account_name):
+def process_withdraw_amount(message, account_name, method):
     if message.text == "🔙 رجوع للقائمة الرئيسية":
         return back_to_menu(message)
 
@@ -138,22 +161,22 @@ def process_withdraw_amount(message, account_name):
         amount = int(message.text.replace(",", "").replace(".", ""))
         if amount < 25000:
             msg = bot.send_message(message.chat.id, "⚠️ المبلغ يجب أن يكون 25,000 ل.س أو أكثر.\nأدخل المبلغ من جديد:", reply_markup=back_button())
-            return bot.register_next_step_handler(msg, process_withdraw_amount, account_name)
+            return bot.register_next_step_handler(msg, process_withdraw_amount, account_name, method)
     except:
         msg = bot.send_message(message.chat.id, "⚠️ رجاءً أدخل المبلغ بشكل صحيح:", reply_markup=back_button())
-        return bot.register_next_step_handler(msg, process_withdraw_amount, account_name)
+        return bot.register_next_step_handler(msg, process_withdraw_amount, account_name, method)
 
-    msg = bot.send_message(message.chat.id, "📲 أرسل تفاصيل محفظتك (سيرياتيل كاش):", reply_markup=back_button())
-    bot.register_next_step_handler(msg, confirm_withdraw, account_name, amount)
+    msg = bot.send_message(message.chat.id, "📲 أرسل رقم/كود محفظتك:", reply_markup=back_button())
+    bot.register_next_step_handler(msg, confirm_withdraw, account_name, amount, method)
 
-def confirm_withdraw(message, account_name, amount):
+def confirm_withdraw(message, account_name, amount, method):
     if message.text == "🔙 رجوع للقائمة الرئيسية":
         return back_to_menu(message)
 
     wallet = message.text
     bot.send_message(
         ADMIN_ID,
-        f"📥 طلب سحب:\nاسم الحساب: {account_name}\nالمبلغ: {amount}\nالمحفظة: {wallet}\nمن المستخدم: {message.from_user.id}"
+        f"📥 طلب سحب:\nطريقة السحب: {method}\nاسم الحساب: {account_name}\nالمبلغ: {amount}\nرقم/كود المحفظة: {wallet}\nمن المستخدم: {message.from_user.id}"
     )
     bot.send_message(message.chat.id, "✅ تم استلام طلب السحب.\nطلبك قيد المعالجة، عند الانتهاء سنرسل لك تأكيد العملية.", reply_markup=main_menu())
 
