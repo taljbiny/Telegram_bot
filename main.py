@@ -26,7 +26,10 @@ def back_button():
 def send_welcome(message):
     bot.send_message(
         message.chat.id,
-        "أهلاً بك 👋\nاختر من القائمة:",
+        "أهلاً بك 👋\n"
+        "اختر من القائمة:\n\n"
+        "🌐 موقعنا: https://www.55bets.net/ar/ألعاب/slots/247\n"
+        "📘 صفحتنا على فيسبوك (للتواصل أو الدعم): https://www.facebook.com/share/16Atgg9Agk/",
         reply_markup=main_menu()
     )
 
@@ -98,11 +101,20 @@ def process_payment_method(message, account_name, amount):
     if method == "📲 سيرياتيل كاش":
         msg = bot.send_message(
             message.chat.id,
-            "💳 أرسل المبلغ إلى الرقم التالي:\n📱 82492253\nبعد الدفع أرسل صورة التأكيد.",
+            "💳 أرسل المبلغ إلى الرقم التالي:\n📱 82492253\n\nبعد الدفع أرسل صورة تأكيد الدفع.\n(يُفضّل أن تظهر في الصورة: المبلغ، رقم المحفظة، و/أو رقم العملية أو إيصال التحويل).",
             reply_markup=back_button()
         )
         bot.register_next_step_handler(msg, confirm_payment, account_name, amount, method)
-    elif method in ["🏦 شام كاش", "💳 حوالة"]:
+
+    elif method == "🏦 شام كاش":
+        msg = bot.send_message(
+            message.chat.id,
+            "💳 أرسل المبلغ إلى الكود التالي:\n🔑 131efe4fbccd83a811282761222eee69\n\nبعد الدفع أرسل صورة تأكيد الدفع.\n(تأكد أن تظهر في الصورة: المبلغ، الكود أو رقم العملية).",
+            reply_markup=back_button()
+        )
+        bot.register_next_step_handler(msg, confirm_payment, account_name, amount, method)
+
+    elif method == "💳 حوالة":
         bot.send_message(message.chat.id, "❌ هذه الطريقة غير متوفرة حالياً.", reply_markup=main_menu())
     else:
         bot.send_message(message.chat.id, "⚠️ خيار غير صحيح.", reply_markup=main_menu())
@@ -119,8 +131,9 @@ def confirm_payment(message, account_name, amount, method):
         bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption="📸 صورة تأكيد الدفع")
         bot.send_message(message.chat.id, "✅ تم استلام عملية الإيداع.\nطلبك قيد المعالجة.", reply_markup=main_menu())
     else:
-        bot.send_message(message.chat.id, "⚠️ رجاءً أرسل صورة تأكيد الدفع.", reply_markup=back_button())
-        bot.register_next_step_handler(message, confirm_payment, account_name, amount, method)
+        # نطلب من المستخدم إرسال صورة مرة ثانية (نسجل على الرسالة الجديدة)
+        msg = bot.send_message(message.chat.id, "⚠️ رجاءً أرسل **صورة** تأكيد الدفع (يجب أن تظهر فيها المبلغ ورقم المحفظة/الكود).", reply_markup=back_button())
+        bot.register_next_step_handler(msg, confirm_payment, account_name, amount, method)
 
 # ====== سحب ======
 @bot.message_handler(func=lambda message: message.text == "💵 سحب")
@@ -137,10 +150,10 @@ def withdraw_method(message):
         return back_to_menu(message)
 
     method = message.text
-    if method == "📲 سيرياتيل كاش":
+    if method in ["📲 سيرياتيل كاش", "🏦 شام كاش"]:
         msg = bot.send_message(message.chat.id, "📛 أرسل اسم حسابك للسحب:", reply_markup=back_button())
         bot.register_next_step_handler(msg, process_withdraw_name, method)
-    elif method in ["🏦 شام كاش", "💳 حوالة"]:
+    elif method == "💳 حوالة":
         bot.send_message(message.chat.id, "❌ هذه الطريقة غير متوفرة حالياً.", reply_markup=main_menu())
     else:
         bot.send_message(message.chat.id, "⚠️ خيار غير صحيح.", reply_markup=main_menu())
@@ -166,7 +179,23 @@ def process_withdraw_amount(message, account_name, method):
         msg = bot.send_message(message.chat.id, "⚠️ رجاءً أدخل المبلغ بشكل صحيح:", reply_markup=back_button())
         return bot.register_next_step_handler(msg, process_withdraw_amount, account_name, method)
 
-    msg = bot.send_message(message.chat.id, "📲 أرسل رقم/كود محفظتك:", reply_markup=back_button())
+    # نرسل رسالة مخصصة حسب طريقة السحب توضح للمستخدم شكل الكود/الرقم اللي يحتاج يرسله
+    if method == "📲 سيرياتيل كاش":
+        prompt = (
+            "📲 الآن أرسل **رقم/كود محفظة سيرياتيل كاش** الذي تريد استلام المبلغ عليه.\n\n"
+            "مثال: 82492253\n"
+            "▪️ اكتب فقط الأرقام (بدون كلمات إضافية أو رموز).\n"
+            "▪️ تأكد من أن الرقم صحيح لتصلك الحوالة."
+        )
+    else:  # "🏦 شام كاش"
+        prompt = (
+            "🏦 الآن أرسل **كود محفظة شام كاش** الذي تريد استلام المبلغ عليه.\n\n"
+            "مثال: 131efe4fbccd83a811282761222eee69\n"
+            "▪️ انسخ الكود تماماً كما هو (حساس للحروف والأرقام).\n"
+            "▪️ اكتب فقط الكود بدون نص إضافي."
+        )
+
+    msg = bot.send_message(message.chat.id, prompt, reply_markup=back_button())
     bot.register_next_step_handler(msg, confirm_withdraw, account_name, amount, method)
 
 def confirm_withdraw(message, account_name, amount, method):
