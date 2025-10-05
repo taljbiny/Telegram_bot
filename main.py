@@ -10,6 +10,7 @@ server = Flask(__name__)
 
 # ===== تخزين جلسات المستخدم =====
 user_sessions = {}
+reply_sessions = {}  # لتخزين جلسات الرد للأدمن
 
 # ===== القوائم الرئيسية =====
 def main_menu_inline():
@@ -60,12 +61,29 @@ def callback_handler(call):
             msg = bot.send_message(chat_id, f"💬 أرسل اسم الحساب للسحب عبر {method.capitalize()} كاش:", reply_markup=back_markup())
             bot.register_next_step_handler(msg, withdraw_step_account, method)
 
+    elif data.startswith("pay_"):
+        method = data.split("_")[1]
+        chat_id = call.message.chat.id
+        session = user_sessions.get(chat_id)
+        if not session:
+            bot.send_message(chat_id, "⚠️ حدث خطأ، الرجاء إعادة العملية.", reply_markup=main_menu_inline())
+            return
+        session["payment_method"] = method
+        if method == "syriatel":
+            bot.send_message(chat_id, "💳 أرسل المبلغ إلى رقم سيرياتيل كاش 82492253\nثم أرسل صورة التأكيد:", reply_markup=back_markup())
+        elif method == "sham":
+            bot.send_message(chat_id, "💳 أرسل المبلغ إلى كود شام كاش 131efe4fbccd83a811282761222eee69\nثم أرسل صورة التأكيد:", reply_markup=back_markup())
+        bot.register_next_step_handler_by_chat_id(chat_id, deposit_step_confirm)
+
     elif data == "support":
         msg = bot.send_message(chat_id, "📩 اشرح مشكلتك بالتفصيل، وسيتم الرد عليك من الإدارة:", reply_markup=back_markup())
         bot.register_next_step_handler(msg, process_support_message)
 
     elif data == "back_main":
         bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+
+    elif data.startswith("reply|"):
+        handle_reply_button(call)
 
 # ===== إنشاء حساب =====
 def process_account_creation(message):
@@ -105,11 +123,31 @@ def deposit_step_amount(message):
         bot.register_next_step_handler(msg, deposit_step_amount)
         return
     user_sessions[chat_id]["amount"] = amount
-    # اختيار طريقة الدفع
+    # خيارات الدفع
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("📱 سيرياتيل كاش", callback_data="pay_syriatel"))
     markup.add(types.InlineKeyboardButton("💳 شام كاش", callback_data="pay_sham"))
     bot.send_message(chat_id, "اختر طريقة الدفع:", reply_markup=markup)
+
+def deposit_step_confirm(message):
+    chat_id = message.chat.id
+    session = user_sessions.get(chat_id)
+    if not session:
+        bot.send_message(chat_id, "⚠️ حدث خطأ، الرجاء إعادة العملية.", reply_markup=main_menu_inline())
+        return
+    if message.text == "🔙 رجوع":
+        user_sessions.pop(chat_id, None)
+        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+        return
+    if message.content_type != "photo":
+        msg = bot.send_message(chat_id, "⚠️ الرجاء إرسال صورة تأكيد الدفع:", reply_markup=back_markup())
+        bot.register_next_step_handler(msg, deposit_step_confirm)
+        return
+    # إرسال التفاصيل للأدمن بعد إكمال جميع الخطوات
+    send_to_admin(f"📥 عملية إيداع:\nاسم الحساب: {session['account_name']}\nالمبلغ: {session['amount']}\nالطريقة: {session['payment_method']}\nمن المستخدم: {chat_id}", chat_id)
+    bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption="📸 صورة تأكيد الدفع")
+    bot.send_message(chat_id, "✅ تم استلام عملية الإيداع، طلبك قيد المعالجة.", reply_markup=main_menu_inline())
+    user_sessions.pop(chat_id, None)
 
 # ===== السحب كامل الخطوات =====
 def withdraw_step_account(message, method):
@@ -138,11 +176,13 @@ def withdraw_step_amount(message):
         msg = bot.send_message(chat_id, "⚠️ أدخل المبلغ بشكل صحيح:", reply_markup=back_markup())
         bot.register_next_step_handler(msg, withdraw_step_amount)
         return
-    user_sessions[chat_id]["amount"] = amount
-    method = user_sessions[chat_id]["method"]
-    # إرسال طلب السحب للأدمن بعد إكمال كل التفاصيل
-    send_to_admin(f"📥 طلب سحب:\nطريقة: {method}\nاسم الحساب: {user_sessions[chat_id]['account_name']}\nالمبلغ: {amount}\nمن المستخدم: {chat_id}", chat_id)
-    bot.send_message(chat_id, f"✅ تم استلام طلب السحب، طلبك قيد المعالجة.", reply_markup=main_menu_inline())
+    session = user_sessions.get(chat_id)
+    if not session:
+        bot.send_message(chat_id, "⚠️ حدث خطأ، الرجاء إعادة العملية.", reply_markup=main_menu_inline())
+        return
+    session["amount"] = amount
+    send_to_admin(f"📥 طلب سحب:\nطريقة: {session['method']}\nاسم الحساب: {session['account_name']}\nالمبلغ: {amount}\nمن المستخدم: {chat_id}", chat_id)
+    bot.send_message(chat_id, "✅ تم استلام طلب السحب، طلبك قيد المعالجة.", reply_markup=main_menu_inline())
     user_sessions.pop(chat_id, None)
 
 # ===== دعم المستخدم =====
@@ -156,17 +196,22 @@ def process_support_message(message):
     send_to_admin(f"📩 رسالة دعم من المستخدم {chat_id}:\n{text}", chat_id)
 
 # ===== زر الرد للأدمن =====
-@bot.callback_query_handler(func=lambda call: call.data.startswith("reply|"))
-def reply_user(call):
+def handle_reply_button(call):
     user_id = int(call.data.split("|")[1])
-    msg = bot.send_message(call.from_user.id, f"📩 اكتب الرد الذي تريد إرساله للمستخدم {user_id}:")
-    bot.register_next_step_handler(msg, send_reply_to_user, user_id)
+    reply_sessions[call.from_user.id] = user_id
+    msg = bot.send_message(call.from_user.id, f"📩 اكتب الرد للمستخدم {user_id}:")
+    bot.register_next_step_handler(msg, process_admin_reply)
 
-def send_reply_to_user(message, user_id):
+def process_admin_reply(message):
+    admin_id = message.chat.id
+    if admin_id not in reply_sessions:
+        bot.send_message(admin_id, "⚠️ لم يتم تحديد مستخدم للرد.")
+        return
+    user_id = reply_sessions.pop(admin_id)
     bot.send_message(user_id, f"💬 رسالة من الإدارة:\n{message.text}")
-    bot.send_message(message.chat.id, "✅ تم إرسال الرد بنجاح.")
+    bot.send_message(admin_id, "✅ تم إرسال الرد بنجاح.")
 
-# ===== دالة إرسال الرسائل للأدمن مع زر الرد =====
+# ===== إرسال الرسائل للأدمن مع زر الرد =====
 def send_to_admin(text, user_id):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("📩 الرد على المستخدم", callback_data=f"reply|{user_id}"))
