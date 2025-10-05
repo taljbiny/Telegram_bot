@@ -169,3 +169,111 @@ def confirm_payment(message, account_name, amount, method):
 
 # ====== سحب ======
 def process_withdraw_name(message, method):
+    chat_id = message.chat.id
+    if message.text.strip() == "🔙 رجوع":
+        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+        return
+    account_name = message.text.strip()
+    user_sessions[chat_id] = {"account_name": account_name, "method": method}
+    msg = bot.send_message(chat_id, "💵 أرسل المبلغ المطلوب (أقل عملية 25,000 ل.س):", reply_markup=back_markup())
+    bot.register_next_step_handler(msg, process_withdraw_amount)
+
+def process_withdraw_amount(message):
+    chat_id = message.chat.id
+    sess = user_sessions.get(chat_id)
+    if not sess:
+        bot.send_message(chat_id, "⚠️ انتهت الجلسة. ابدأ من جديد.", reply_markup=main_menu_inline())
+        return
+    if message.text.strip() == "🔙 رجوع":
+        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+        user_sessions.pop(chat_id, None)
+        return
+    try:
+        amount = int(message.text.replace(",", "").replace(".", "").strip())
+        if amount < 25000:
+            msg = bot.send_message(chat_id, "⚠️ المبلغ يجب أن يكون 25,000 ل.س أو أكثر.\nأعد إدخاله:", reply_markup=back_markup())
+            bot.register_next_step_handler(msg, process_withdraw_amount)
+            return
+    except:
+        msg = bot.send_message(chat_id, "⚠️ أدخل المبلغ بشكل صحيح:", reply_markup=back_markup())
+        bot.register_next_step_handler(msg, process_withdraw_amount)
+        return
+
+    sess["amount"] = amount
+    prompt = "📲 أرسل رقم/كود المحفظة المراد استلام المبلغ عليها:"
+    msg = bot.send_message(chat_id, prompt, reply_markup=back_markup())
+    bot.register_next_step_handler(msg, confirm_withdraw)
+
+def confirm_withdraw(message):
+    chat_id = message.chat.id
+    sess = user_sessions.get(chat_id)
+    if not sess:
+        bot.send_message(chat_id, "⚠️ انتهت الجلسة. ابدأ من جديد.", reply_markup=main_menu_inline())
+        return
+    if message.text.strip() == "🔙 رجوع":
+        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+        user_sessions.pop(chat_id, None)
+        return
+    wallet = message.text.strip()
+    bot.send_message(ADMIN_ID,
+        f"📥 طلب سحب:\nطريقة السحب: {sess['method']}\nاسم الحساب: {sess['account_name']}\nالمبلغ: {sess['amount']}\nرقم/كود المحفظة: {wallet}\nمن المستخدم: {message.from_user.id}",
+        reply_markup=reply_user_button(message.from_user.id))
+    bot.send_message(chat_id, "✅ تم استلام طلب السحب.\nطلبك قيد المعالجة، عند الانتهاء سنرسل لك تأكيد العملية.", reply_markup=main_menu_inline())
+    user_sessions.pop(chat_id, None)
+
+# ====== دعم العملاء ======
+def process_support_message(message):
+    chat_id = message.chat.id
+    if message.text.strip() == "🔙 رجوع":
+        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+        return
+    # تحويل الرسالة للأدمن
+    if message.content_type == "photo":
+        bot.send_photo(ADMIN_ID, message.photo[-1].file_id,
+            caption=f"📥 رسالة دعم من {message.from_user.id}", 
+            reply_markup=reply_user_button(message.from_user.id, support=True))
+    else:
+        bot.send_message(ADMIN_ID, f"📥 رسالة دعم من {message.from_user.id}:\n{message.text}", 
+                         reply_markup=reply_user_button(message.from_user.id, support=True))
+    bot.send_message(chat_id, "✅ تم إرسال رسالتك للدعم، سيتم الرد عليك قريباً.", reply_markup=main_menu_inline())
+
+# ====== زر الرد على المستخدم للأدمن ======
+def reply_user_button(user_id, support=False):
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("📩 الرد على المستخدم", callback_data=f"reply_{user_id}_{'support' if support else 'other'}"))
+    return markup
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("reply_"))
+def handle_admin_reply(call):
+    data = call.data.split("_")
+    user_id = int(data[1])
+    is_support = data[2]=="support"
+    chat_id = call.message.chat.id
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(chat_id, "✍️ أرسل الرد ليتم إرساله للمستخدم:")
+    bot.register_next_step_handler(msg, send_admin_reply, user_id, is_support)
+
+def send_admin_reply(message, user_id, is_support):
+    text = message.text
+    if is_support:
+        text = f"💬 **رد من الدعم الفني:**\n{text}"
+    bot.send_message(user_id, text)
+    bot.send_message(message.chat.id, "✅ تم إرسال ردك للمستخدم بنجاح.")
+
+# ====== Webhook مع Render ======
+from flask import Flask, request
+@server.route('/' + TOKEN, methods=['POST'])
+def getMessage():
+    json_str = request.get_data().decode('UTF-8')
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "!", 200
+
+@server.route("/")
+def webhook():
+    bot.remove_webhook()
+    bot.set_webhook(url="https://telegram-bot-xsto.onrender.com/" + TOKEN)
+    return "!", 200
+
+if __name__ == "__main__":
+    server.run(host="0.0.0.0", port=10000)
