@@ -3,125 +3,193 @@ from telebot import types
 from flask import Flask, request
 
 # ====== الإعدادات ======
-TOKEN = "8317743306:AAFGH1Acxb6fIwZ0o0T2RvNjezQFW8KWcw8"
-ADMIN_ID = 7625893170
+TOKEN = "8317743306:AAFGH1Acxb6fIwZ0o0T2RvNjezQFW8KWcw8"  # غيّر إذا لزم
+ADMIN_ID = 7625893170  # غيّر إلى آي دي الأدمن لو مختلف
 bot = telebot.TeleBot(TOKEN)
 server = Flask(__name__)
 
-# ====== لوحة البداية ======
-def main_menu():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.row("🆕 إنشاء حساب")
-    markup.row("💰 إيداع", "💵 سحب")
+# ====== جلسات المستخدم المؤقتة ======
+# يخزن بيانات مؤقتة مثل account_name و amount لكل محادثة
+user_sessions = {}
+
+# ====== تواقيع الأزرار ======
+def main_menu_inline():
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("🆕 إنشاء حساب", callback_data="create_account"),
+        types.InlineKeyboardButton("💰 إيداع", callback_data="deposit"),
+        types.InlineKeyboardButton("💵 سحب", callback_data="withdraw"),
+        types.InlineKeyboardButton("📞 الاتصال بالدعم", callback_data="contact_support"),
+    )
     return markup
 
-# ====== زر الرجوع ======
-def back_button():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.row("🔙 رجوع للقائمة الرئيسية")
+def back_markup():
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back"))
     return markup
 
 # ====== /start ======
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.send_message(
-        message.chat.id,
+    text = (
         "أهلاً بك 👋\n"
-        "اختر من القائمة:\n\n"
+        "اختر من الأزرار أدناه:\n\n"
         "🌐 موقعنا: https://www.55bets.net/ar/ألعاب/slots/247\n"
-        "📘 صفحتنا على فيسبوك (للتواصل أو الدعم): https://www.facebook.com/share/16Atgg9Agk/",
-        reply_markup=main_menu()
+        "📘 صفحتنا على فيسبوك (للتواصل أو الدعم): https://www.facebook.com/share/16Atgg9Agk/"
     )
+    bot.send_message(message.chat.id, text, reply_markup=main_menu_inline())
 
-# ====== الرجوع للقائمة الرئيسية ======
-@bot.message_handler(func=lambda message: message.text == "🔙 رجوع للقائمة الرئيسية")
-def back_to_menu(message):
-    bot.send_message(
-        message.chat.id,
-        "رجعت للقائمة الرئيسية ✅",
-        reply_markup=main_menu()
-    )
+# ====== معالجة نقرات الأزرار (Callbacks) ======
+@bot.callback_query_handler(func=lambda call: True)
+def callback_handler(call):
+    chat_id = call.message.chat.id
+    data = call.data
+
+    # أزل انتظار التحميل
+    bot.answer_callback_query(call.id)
+
+    if data == "back":
+        # احذف أي جلسة مفتوحة للمستخدم
+        user_sessions.pop(chat_id, None)
+        try:
+            bot.edit_message_text(
+                "رجعت للقائمة الرئيسية ✅",
+                chat_id,
+                call.message.message_id,
+                reply_markup=main_menu_inline()
+            )
+        except:
+            bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+
+    elif data == "create_account":
+        msg = bot.send_message(chat_id, "📛 أرسل اسم الحساب:", reply_markup=back_markup())
+        bot.register_next_step_handler(msg, process_account_name)
+
+    elif data == "deposit":
+        msg = bot.send_message(chat_id, "📛 أرسل اسم حسابك:", reply_markup=back_markup())
+        bot.register_next_step_handler(msg, process_deposit_name)
+
+    elif data == "withdraw":
+        markup = types.InlineKeyboardMarkup()
+        markup.add(
+            types.InlineKeyboardButton("📲 سيرياتيل كاش", callback_data="withdraw_sy"),
+            types.InlineKeyboardButton("🏦 شام كاش (مغلق)", callback_data="withdraw_closed"),
+        )
+        markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back"))
+        bot.send_message(chat_id, "اختر طريقة السحب:", reply_markup=markup)
+
+    elif data == "withdraw_closed":
+        bot.answer_callback_query(call.id, "❌ هذه الطريقة غير متاحة حالياً.", show_alert=True)
+
+    elif data == "withdraw_sy":
+        msg = bot.send_message(chat_id, "📛 أرسل اسم حسابك للسحب:", reply_markup=back_markup())
+        bot.register_next_step_handler(msg, process_withdraw_name, "📲 سيرياتيل كاش")
+
+    elif data == "contact_support":
+        # رد تلقائي للمستخدم
+        auto_text = (
+            "الرجاء شرح المشكلة بلتفصيل وسوف يتم الرد عليك بأقرب وقت ممكن\n\n"
+            "شكراً لانتظارنا"
+        )
+        bot.send_message(chat_id, auto_text, reply_markup=main_menu_inline())
+
+        # إخطار الأدمن مع تعليمات للرد عبر الأمر /reply
+        username = call.from_user.username or "—"
+        bot.send_message(
+            ADMIN_ID,
+            f"📞 طلب دعم جديد:\n"
+            f"المستخدم: {call.from_user.id} (username: @{username})\n\n"
+            f"لمعالجة الطلب استخدم:\n/reply {call.from_user.id} رسالتك"
+        )
+
+    elif data == "pay_closed":
+        bot.answer_callback_query(call.id, "❌ هذه الطريقة غير متاحة حالياً.", show_alert=True)
+
+    elif data == "pay_sy":
+        # احصل على بيانات الجلسة
+        sess = user_sessions.get(chat_id)
+        if not sess or "account_name" not in sess or "amount" not in sess:
+            bot.send_message(chat_id, "⚠️ انتهت الجلسة أو لم تحدد الاسم/المبلغ. ابدأ مرة أخرى.", reply_markup=main_menu_inline())
+            user_sessions.pop(chat_id, None)
+            return
+
+        account_name = sess["account_name"]
+        amount = sess["amount"]
+
+        msg = bot.send_message(
+            chat_id,
+            "💳 أرسل المبلغ إلى الرقم التالي:\n📱 82492253\n\nبعد الدفع أرسل صورة تأكيد الدفع.\n(يُفضّل أن تظهر في الصورة: المبلغ، رقم المحفظة، و/أو رقم العملية أو إيصال التحويل).",
+            reply_markup=back_markup()
+        )
+        bot.register_next_step_handler(msg, confirm_payment, account_name, amount, "📲 سيرياتيل كاش")
 
 # ====== إنشاء حساب ======
-@bot.message_handler(func=lambda message: message.text == "🆕 إنشاء حساب")
-def create_account(message):
-    msg = bot.send_message(message.chat.id, "📛 أرسل اسم الحساب:", reply_markup=back_button())
-    bot.register_next_step_handler(msg, process_account_name)
-
 def process_account_name(message):
-    if message.text == "🔙 رجوع للقائمة الرئيسية":
-        return back_to_menu(message)
+    chat_id = message.chat.id
+    # دعم زر الرجوع كتابة يدوياً (لو كتب المستخدم)
+    if message.text and message.text.strip() == "🔙 رجوع":
+        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+        user_sessions.pop(chat_id, None)
+        return
 
-    account_name = message.text
+    account_name = message.text.strip()
     bot.send_message(
         ADMIN_ID,
         f"📥 طلب إنشاء حساب جديد:\nاسم الحساب: {account_name}\nمن المستخدم: {message.from_user.id}"
     )
-    bot.send_message(message.chat.id, f"✅ تم استلام طلب إنشاء الحساب: {account_name}\nبانتظار رد الادمن.", reply_markup=main_menu())
+    bot.send_message(message.chat.id, f"✅ تم استلام طلب إنشاء الحساب: {account_name}\nبانتظار رد الادمن.", reply_markup=main_menu_inline())
 
 # ====== إيداع ======
-@bot.message_handler(func=lambda message: message.text == "💰 إيداع")
-def deposit(message):
-    msg = bot.send_message(message.chat.id, "📛 أرسل اسم حسابك:", reply_markup=back_button())
-    bot.register_next_step_handler(msg, process_deposit_name)
-
 def process_deposit_name(message):
-    if message.text == "🔙 رجوع للقائمة الرئيسية":
-        return back_to_menu(message)
+    chat_id = message.chat.id
+    if message.text and message.text.strip() == "🔙 رجوع":
+        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+        user_sessions.pop(chat_id, None)
+        return
 
-    account_name = message.text
-    msg = bot.send_message(message.chat.id, "💵 أدخل المبلغ (أقل عملية 25,000 ل.س):", reply_markup=back_button())
-    bot.register_next_step_handler(msg, process_deposit_amount, account_name)
+    account_name = message.text.strip()
+    # خزّن الاسم في الجلسة
+    user_sessions[chat_id] = {"account_name": account_name}
+    msg = bot.send_message(chat_id, "💵 أدخل المبلغ (أقل عملية 25,000 ل.س):", reply_markup=back_markup())
+    bot.register_next_step_handler(msg, process_deposit_amount)
 
-def process_deposit_amount(message, account_name):
-    if message.text == "🔙 رجوع للقائمة الرئيسية":
-        return back_to_menu(message)
+def process_deposit_amount(message):
+    chat_id = message.chat.id
+    if message.text and message.text.strip() == "🔙 رجوع":
+        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+        user_sessions.pop(chat_id, None)
+        return
 
     try:
-        amount = int(message.text.replace(",", "").replace(".", ""))
+        amount = int(message.text.replace(",", "").replace(".", "").strip())
         if amount < 25000:
-            msg = bot.send_message(message.chat.id, "⚠️ المبلغ يجب أن يكون 25,000 ل.س أو أكثر.\nأدخل المبلغ من جديد:", reply_markup=back_button())
-            return bot.register_next_step_handler(msg, process_deposit_amount, account_name)
+            msg = bot.send_message(chat_id, "⚠️ المبلغ يجب أن يكون 25,000 ل.س أو أكثر.\nأدخل المبلغ من جديد:", reply_markup=back_markup())
+            return bot.register_next_step_handler(msg, process_deposit_amount)
     except:
-        msg = bot.send_message(message.chat.id, "⚠️ رجاءً أدخل المبلغ بشكل صحيح:", reply_markup=back_button())
-        return bot.register_next_step_handler(msg, process_deposit_amount, account_name)
+        msg = bot.send_message(chat_id, "⚠️ رجاءً أدخل المبلغ بشكل صحيح:", reply_markup=back_markup())
+        return bot.register_next_step_handler(msg, process_deposit_amount)
 
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.row("📲 سيرياتيل كاش")
-    markup.row("🏦 شام كاش", "💳 حوالة")
-    markup.row("🔙 رجوع للقائمة الرئيسية")
-    msg = bot.send_message(message.chat.id, "اختر طريقة الدفع:", reply_markup=markup)
-    bot.register_next_step_handler(msg, process_payment_method, account_name, amount)
+    # خزّن المبلغ أيضاً في الجلسة
+    if chat_id not in user_sessions:
+        user_sessions[chat_id] = {}
+    user_sessions[chat_id]["amount"] = amount
 
-def process_payment_method(message, account_name, amount):
-    if message.text == "🔙 رجوع للقائمة الرئيسية":
-        return back_to_menu(message)
+    # أظهر طرق الدفع (نستخدم callback pay_sy)
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("📲 سيرياتيل كاش", callback_data="pay_sy"))
+    markup.add(types.InlineKeyboardButton("🏦 شام كاش ❌", callback_data="pay_closed"))
+    markup.add(types.InlineKeyboardButton("💳 حوالة ❌", callback_data="pay_closed"))
+    markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back"))
 
-    method = message.text
-    if method == "📲 سيرياتيل كاش":
-        msg = bot.send_message(
-            message.chat.id,
-            "💳 أرسل المبلغ إلى الرقم التالي:\n📱 82492253\n\nبعد الدفع أرسل صورة تأكيد الدفع.\n(يُفضّل أن تظهر في الصورة: المبلغ، رقم المحفظة، و/أو رقم العملية أو إيصال التحويل).",
-            reply_markup=back_button()
-        )
-        bot.register_next_step_handler(msg, confirm_payment, account_name, amount, method)
-
-    elif method == "🏦 شام كاش":
-        msg = bot.send_message(
-            message.chat.id,
-            "💳 أرسل المبلغ إلى الكود التالي:\n🔑 131efe4fbccd83a811282761222eee69\n\nبعد الدفع أرسل صورة تأكيد الدفع.\n(تأكد أن تظهر في الصورة: المبلغ، الكود أو رقم العملية).",
-            reply_markup=back_button()
-        )
-        bot.register_next_step_handler(msg, confirm_payment, account_name, amount, method)
-
-    elif method == "💳 حوالة":
-        bot.send_message(message.chat.id, "❌ هذه الطريقة غير متوفرة حالياً.", reply_markup=main_menu())
-    else:
-        bot.send_message(message.chat.id, "⚠️ خيار غير صحيح.", reply_markup=main_menu())
+    bot.send_message(chat_id, "اختر طريقة الدفع:", reply_markup=markup)
 
 def confirm_payment(message, account_name, amount, method):
-    if message.text == "🔙 رجوع للقائمة الرئيسية":
-        return back_to_menu(message)
+    chat_id = message.chat.id
+    # السماح للرجوع كتابياً
+    if message.text and message.text.strip() == "🔙 رجوع":
+        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+        user_sessions.pop(chat_id, None)
+        return
 
     if message.content_type == "photo":
         bot.send_message(
@@ -129,57 +197,49 @@ def confirm_payment(message, account_name, amount, method):
             f"📥 عملية إيداع:\nاسم الحساب: {account_name}\nالمبلغ: {amount}\nالطريقة: {method}\nمن المستخدم: {message.from_user.id}"
         )
         bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption="📸 صورة تأكيد الدفع")
-        bot.send_message(message.chat.id, "✅ تم استلام عملية الإيداع.\nطلبك قيد المعالجة.", reply_markup=main_menu())
+        bot.send_message(chat_id, "✅ تم استلام عملية الإيداع.\nطلبك قيد المعالجة.", reply_markup=main_menu_inline())
+        user_sessions.pop(chat_id, None)
     else:
-        # نطلب من المستخدم إرسال صورة مرة ثانية (نسجل على الرسالة الجديدة)
-        msg = bot.send_message(message.chat.id, "⚠️ رجاءً أرسل **صورة** تأكيد الدفع (يجب أن تظهر فيها المبلغ ورقم المحفظة/الكود).", reply_markup=back_button())
+        msg = bot.send_message(chat_id, "⚠️ رجاءً أرسل **صورة** تأكيد الدفع (يجب أن تظهر فيها المبلغ ورقم المحفظة/الكود).", reply_markup=back_markup())
         bot.register_next_step_handler(msg, confirm_payment, account_name, amount, method)
 
 # ====== سحب ======
-@bot.message_handler(func=lambda message: message.text == "💵 سحب")
-def withdraw_options(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.row("📲 سيرياتيل كاش")
-    markup.row("🏦 شام كاش", "💳 حوالة")
-    markup.row("🔙 رجوع للقائمة الرئيسية")
-    bot.send_message(message.chat.id, "اختر طريقة السحب:", reply_markup=markup)
-    bot.register_next_step_handler(message, withdraw_method)
-
-def withdraw_method(message):
-    if message.text == "🔙 رجوع للقائمة الرئيسية":
-        return back_to_menu(message)
-
-    method = message.text
-    if method in ["📲 سيرياتيل كاش", "🏦 شام كاش"]:
-        msg = bot.send_message(message.chat.id, "📛 أرسل اسم حسابك للسحب:", reply_markup=back_button())
-        bot.register_next_step_handler(msg, process_withdraw_name, method)
-    elif method == "💳 حوالة":
-        bot.send_message(message.chat.id, "❌ هذه الطريقة غير متوفرة حالياً.", reply_markup=main_menu())
-    else:
-        bot.send_message(message.chat.id, "⚠️ خيار غير صحيح.", reply_markup=main_menu())
-
 def process_withdraw_name(message, method):
-    if message.text == "🔙 رجوع للقائمة الرئيسية":
-        return back_to_menu(message)
+    chat_id = message.chat.id
+    if message.text and message.text.strip() == "🔙 رجوع":
+        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+        user_sessions.pop(chat_id, None)
+        return
 
-    account_name = message.text
-    msg = bot.send_message(message.chat.id, "💵 أرسل المبلغ المطلوب (أقل عملية 25,000 ل.س):", reply_markup=back_button())
-    bot.register_next_step_handler(msg, process_withdraw_amount, account_name, method)
+    account_name = message.text.strip()
+    # خزّن الاسم والطريقة
+    user_sessions[chat_id] = {"account_name": account_name, "method": method}
+    msg = bot.send_message(chat_id, "💵 أرسل المبلغ المطلوب (أقل عملية 25,000 ل.س):", reply_markup=back_markup())
+    bot.register_next_step_handler(msg, process_withdraw_amount)
 
-def process_withdraw_amount(message, account_name, method):
-    if message.text == "🔙 رجوع للقائمة الرئيسية":
-        return back_to_menu(message)
+def process_withdraw_amount(message):
+    chat_id = message.chat.id
+    if message.text and message.text.strip() == "🔙 رجوع":
+        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+        user_sessions.pop(chat_id, None)
+        return
 
     try:
-        amount = int(message.text.replace(",", "").replace(".", ""))
+        amount = int(message.text.replace(",", "").replace(".", "").strip())
         if amount < 25000:
-            msg = bot.send_message(message.chat.id, "⚠️ المبلغ يجب أن يكون 25,000 ل.س أو أكثر.\nأدخل المبلغ من جديد:", reply_markup=back_button())
-            return bot.register_next_step_handler(msg, process_withdraw_amount, account_name, method)
+            msg = bot.send_message(chat_id, "⚠️ المبلغ يجب أن يكون 25,000 ل.س أو أكثر.\nأدخل المبلغ من جديد:", reply_markup=back_markup())
+            return bot.register_next_step_handler(msg, process_withdraw_amount)
     except:
-        msg = bot.send_message(message.chat.id, "⚠️ رجاءً أدخل المبلغ بشكل صحيح:", reply_markup=back_button())
-        return bot.register_next_step_handler(msg, process_withdraw_amount, account_name, method)
+        msg = bot.send_message(chat_id, "⚠️ رجاءً أدخل المبلغ بشكل صحيح:", reply_markup=back_markup())
+        return bot.register_next_step_handler(msg, process_withdraw_amount)
 
-    # نرسل رسالة مخصصة حسب طريقة السحب توضح للمستخدم شكل الكود/الرقم اللي يحتاج يرسله
+    sess = user_sessions.get(chat_id, {})
+    account_name = sess.get("account_name", "غير معروف")
+    method = sess.get("method", "غير محدد")
+
+    user_sessions[chat_id]["amount"] = amount
+
+    # نص توجيهي حسب الطريقة
     if method == "📲 سيرياتيل كاش":
         prompt = (
             "📲 الآن أرسل **رقم/كود محفظة سيرياتيل كاش** الذي تريد استلام المبلغ عليه.\n\n"
@@ -187,7 +247,7 @@ def process_withdraw_amount(message, account_name, method):
             "▪️ اكتب فقط الأرقام (بدون كلمات إضافية أو رموز).\n"
             "▪️ تأكد من أن الرقم صحيح لتصلك الحوالة."
         )
-    else:  # "🏦 شام كاش"
+    else:
         prompt = (
             "🏦 الآن أرسل **كود محفظة شام كاش** الذي تريد استلام المبلغ عليه.\n\n"
             "مثال: 131efe4fbccd83a811282761222eee69\n"
@@ -195,21 +255,32 @@ def process_withdraw_amount(message, account_name, method):
             "▪️ اكتب فقط الكود بدون نص إضافي."
         )
 
-    msg = bot.send_message(message.chat.id, prompt, reply_markup=back_button())
-    bot.register_next_step_handler(msg, confirm_withdraw, account_name, amount, method)
+    msg = bot.send_message(chat_id, prompt, reply_markup=back_markup())
+    bot.register_next_step_handler(msg, confirm_withdraw)
 
-def confirm_withdraw(message, account_name, amount, method):
-    if message.text == "🔙 رجوع للقائمة الرئيسية":
-        return back_to_menu(message)
+def confirm_withdraw(message):
+    chat_id = message.chat.id
+    if message.text and message.text.strip() == "🔙 رجوع":
+        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+        user_sessions.pop(chat_id, None)
+        return
 
-    wallet = message.text
+    wallet = message.text.strip()
+    sess = user_sessions.get(chat_id, {})
+    account_name = sess.get("account_name", "غير معروف")
+    amount = sess.get("amount", 0)
+    method = sess.get("method", "غير محدد")
+
     bot.send_message(
         ADMIN_ID,
-        f"📥 طلب سحب:\nطريقة السحب: {method}\nاسم الحساب: {account_name}\nالمبلغ: {amount}\nرقم/كود المحفظة: {wallet}\nمن المستخدم: {message.from_user.id}"
+        f"📥 طلب سحب:\nطريقة السحب: {method}\n"
+        f"اسم الحساب: {account_name}\nالمبلغ: {amount}\n"
+        f"رقم/كود المحفظة: {wallet}\nمن المستخدم: {message.from_user.id}"
     )
-    bot.send_message(message.chat.id, "✅ تم استلام طلب السحب.\nطلبك قيد المعالجة، عند الانتهاء سنرسل لك تأكيد العملية.", reply_markup=main_menu())
+    bot.send_message(chat_id, "✅ تم استلام طلب السحب.\nطلبك قيد المعالجة، عند الانتهاء سنرسل لك تأكيد العملية.", reply_markup=main_menu_inline())
+    user_sessions.pop(chat_id, None)
 
-# ====== رد الادمن ======
+# ====== رد الأدمن عبر الأمر /reply ======
 @bot.message_handler(commands=['reply'])
 def reply_user(message):
     try:
@@ -232,6 +303,7 @@ def getMessage():
 @server.route("/")
 def webhook():
     bot.remove_webhook()
+    # غيّر الرابط هنا إلى رابط مشروعك على Render (مثال)
     bot.set_webhook(url="https://telegram-bot-xsto.onrender.com/" + TOKEN)
     return "!", 200
 
