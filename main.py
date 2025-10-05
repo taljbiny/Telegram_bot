@@ -8,7 +8,7 @@ ADMIN_ID = 7625893170
 bot = telebot.TeleBot(TOKEN)
 server = Flask(__name__)
 
-# ===== تخزين الجلسات =====
+# ===== تخزين جلسات المستخدم =====
 user_sessions = {}
 
 # ===== القوائم الرئيسية =====
@@ -76,8 +76,11 @@ def process_account_creation(message):
 
     username = message.text.strip()
     bot.send_message(chat_id, f"✅ تم استلام طلب إنشاء الحساب: {username}\nبانتظار رد الإدارة.", reply_markup=main_menu_inline())
-    bot.send_message(ADMIN_ID, f"📩 طلب إنشاء حساب جديد:\nاسم الحساب: {username}\nمن المستخدم: {message.from_user.id}",
-                     reply_markup=reply_user_button(message.from_user.id))
+
+    # إرسال رسالة للأدمن مع زر الرد
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("📩 الرد على المستخدم", callback_data=f"reply|{chat_id}"))
+    bot.send_message(ADMIN_ID, f"📥 طلب إنشاء حساب جديد:\nاسم الحساب: {username}\nمن المستخدم: {chat_id}", reply_markup=markup)
 
 # ===== الإيداع =====
 def process_deposit_account(message):
@@ -108,10 +111,16 @@ def process_deposit_amount(message):
         return
 
     user_sessions[chat_id]["amount"] = amount
+    # خيارات الدفع
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("📱 سيرياتيل كاش", callback_data="pay_syriatel"))
     markup.add(types.InlineKeyboardButton("💳 شام كاش", callback_data="pay_sham"))
     bot.send_message(chat_id, "اختر طريقة الدفع:", reply_markup=markup)
+
+    # رسالة للأدمن مع زر الرد
+    markup_admin = types.InlineKeyboardMarkup()
+    markup_admin.add(types.InlineKeyboardButton("📩 الرد على المستخدم", callback_data=f"reply|{chat_id}"))
+    bot.send_message(ADMIN_ID, f"📥 طلب إيداع:\nاسم الحساب: {user_sessions[chat_id]['account_name']}\nالمبلغ: {amount}\nمن المستخدم: {chat_id}", reply_markup=markup_admin)
 
 # ===== Webhook =====
 @server.route('/' + TOKEN, methods=['POST'])
@@ -126,11 +135,16 @@ def webhook():
     bot.set_webhook(url="https://telegram-bot-xsto.onrender.com/" + TOKEN)
     return "!", 200
 
+# ===== زر الرد من الأدمن =====
+@bot.callback_query_handler(func=lambda call: call.data.startswith("reply|"))
+def reply_user(call):
+    user_id = int(call.data.split("|")[1])
+    msg = bot.send_message(call.from_user.id, f"📩 اكتب الرد الذي تريد إرساله للمستخدم {user_id}:")
+    bot.register_next_step_handler(msg, send_reply_to_user, user_id)
+
+def send_reply_to_user(message, user_id):
+    bot.send_message(user_id, f"💬 رسالة من الإدارة:\n{message.text}")
+    bot.send_message(message.chat.id, "✅ تم إرسال الرد بنجاح.")
+
 if __name__ == "__main__":
     server.run(host="0.0.0.0", port=10000)
-
-# ===== زر الرد على المستخدم =====
-def reply_user_button(user_id):
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("📩 الرد على المستخدم", callback_data=f"reply|{user_id}"))
-    return markup
