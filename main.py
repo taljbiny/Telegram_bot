@@ -42,7 +42,7 @@ def callback_handler(call):
 
     elif data == "deposit":
         msg = bot.send_message(chat_id, "💬 أرسل اسم حسابك للإيداع:", reply_markup=back_markup())
-        bot.register_next_step_handler(msg, process_deposit_account)
+        bot.register_next_step_handler(msg, deposit_step_account)
 
     elif data == "withdraw":
         markup = types.InlineKeyboardMarkup()
@@ -58,10 +58,10 @@ def callback_handler(call):
             bot.send_message(chat_id, "❌ هذه الطريقة متوقفة حالياً.", reply_markup=main_menu_inline())
         else:
             msg = bot.send_message(chat_id, f"💬 أرسل اسم الحساب للسحب عبر {method.capitalize()} كاش:", reply_markup=back_markup())
-            bot.register_next_step_handler(msg, process_withdraw_account, method)
+            bot.register_next_step_handler(msg, withdraw_step_account, method)
 
     elif data == "support":
-        msg = bot.send_message(chat_id, "📩 الرجاء شرح المشكلة بالتفصيل، وسيتم الرد عليك من الدعم بأقرب وقت ممكن:", reply_markup=back_markup())
+        msg = bot.send_message(chat_id, "📩 اشرح مشكلتك بالتفصيل، وسيتم الرد عليك من الإدارة:", reply_markup=back_markup())
         bot.register_next_step_handler(msg, process_support_message)
 
     elif data == "back_main":
@@ -73,27 +73,22 @@ def process_account_creation(message):
     if message.text.strip() == "🔙 رجوع":
         bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
         return
-
     username = message.text.strip()
     bot.send_message(chat_id, f"✅ تم استلام طلب إنشاء الحساب: {username}\nبانتظار رد الإدارة.", reply_markup=main_menu_inline())
+    send_to_admin(f"📥 طلب إنشاء حساب:\nاسم الحساب: {username}\nمن المستخدم: {chat_id}", chat_id)
 
-    # إرسال رسالة للأدمن مع زر الرد
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("📩 الرد على المستخدم", callback_data=f"reply|{chat_id}"))
-    bot.send_message(ADMIN_ID, f"📥 طلب إنشاء حساب جديد:\nاسم الحساب: {username}\nمن المستخدم: {chat_id}", reply_markup=markup)
-
-# ===== الإيداع =====
-def process_deposit_account(message):
+# ===== الإيداع كامل الخطوات =====
+def deposit_step_account(message):
     chat_id = message.chat.id
     if message.text.strip() == "🔙 رجوع":
         bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
         return
     account_name = message.text.strip()
     user_sessions[chat_id] = {"account_name": account_name}
-    msg = bot.send_message(chat_id, "💵 أدخل المبلغ (أقل عملية 25,000 ل.س):", reply_markup=back_markup())
-    bot.register_next_step_handler(msg, process_deposit_amount)
+    msg = bot.send_message(chat_id, "💵 أدخل المبلغ (أقل 25,000 ل.س):", reply_markup=back_markup())
+    bot.register_next_step_handler(msg, deposit_step_amount)
 
-def process_deposit_amount(message):
+def deposit_step_amount(message):
     chat_id = message.chat.id
     if message.text.strip() == "🔙 رجوع":
         user_sessions.pop(chat_id, None)
@@ -103,24 +98,79 @@ def process_deposit_amount(message):
         amount = int(message.text.replace(",", "").replace(".", ""))
         if amount < 25000:
             msg = bot.send_message(chat_id, "⚠️ الحد الأدنى 25,000 ل.س، أعد الإدخال:", reply_markup=back_markup())
-            bot.register_next_step_handler(msg, process_deposit_amount)
+            bot.register_next_step_handler(msg, deposit_step_amount)
             return
     except:
         msg = bot.send_message(chat_id, "⚠️ أدخل المبلغ بشكل صحيح:", reply_markup=back_markup())
-        bot.register_next_step_handler(msg, process_deposit_amount)
+        bot.register_next_step_handler(msg, deposit_step_amount)
         return
-
     user_sessions[chat_id]["amount"] = amount
-    # خيارات الدفع
+    # اختيار طريقة الدفع
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("📱 سيرياتيل كاش", callback_data="pay_syriatel"))
     markup.add(types.InlineKeyboardButton("💳 شام كاش", callback_data="pay_sham"))
     bot.send_message(chat_id, "اختر طريقة الدفع:", reply_markup=markup)
 
-    # رسالة للأدمن مع زر الرد
-    markup_admin = types.InlineKeyboardMarkup()
-    markup_admin.add(types.InlineKeyboardButton("📩 الرد على المستخدم", callback_data=f"reply|{chat_id}"))
-    bot.send_message(ADMIN_ID, f"📥 طلب إيداع:\nاسم الحساب: {user_sessions[chat_id]['account_name']}\nالمبلغ: {amount}\nمن المستخدم: {chat_id}", reply_markup=markup_admin)
+# ===== السحب كامل الخطوات =====
+def withdraw_step_account(message, method):
+    chat_id = message.chat.id
+    if message.text.strip() == "🔙 رجوع":
+        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+        return
+    account_name = message.text.strip()
+    user_sessions[chat_id] = {"account_name": account_name, "method": method}
+    msg = bot.send_message(chat_id, "💵 أدخل المبلغ المطلوب (أقل 25,000 ل.س):", reply_markup=back_markup())
+    bot.register_next_step_handler(msg, withdraw_step_amount)
+
+def withdraw_step_amount(message):
+    chat_id = message.chat.id
+    if message.text.strip() == "🔙 رجوع":
+        user_sessions.pop(chat_id, None)
+        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+        return
+    try:
+        amount = int(message.text.replace(",", "").replace(".", ""))
+        if amount < 25000:
+            msg = bot.send_message(chat_id, "⚠️ الحد الأدنى 25,000 ل.س، أعد الإدخال:", reply_markup=back_markup())
+            bot.register_next_step_handler(msg, withdraw_step_amount)
+            return
+    except:
+        msg = bot.send_message(chat_id, "⚠️ أدخل المبلغ بشكل صحيح:", reply_markup=back_markup())
+        bot.register_next_step_handler(msg, withdraw_step_amount)
+        return
+    user_sessions[chat_id]["amount"] = amount
+    method = user_sessions[chat_id]["method"]
+    # إرسال طلب السحب للأدمن بعد إكمال كل التفاصيل
+    send_to_admin(f"📥 طلب سحب:\nطريقة: {method}\nاسم الحساب: {user_sessions[chat_id]['account_name']}\nالمبلغ: {amount}\nمن المستخدم: {chat_id}", chat_id)
+    bot.send_message(chat_id, f"✅ تم استلام طلب السحب، طلبك قيد المعالجة.", reply_markup=main_menu_inline())
+    user_sessions.pop(chat_id, None)
+
+# ===== دعم المستخدم =====
+def process_support_message(message):
+    chat_id = message.chat.id
+    if message.text.strip() == "🔙 رجوع":
+        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
+        return
+    text = message.text.strip()
+    bot.send_message(chat_id, "✅ تم استلام رسالتك، سنقوم بالرد عليك قريباً.", reply_markup=main_menu_inline())
+    send_to_admin(f"📩 رسالة دعم من المستخدم {chat_id}:\n{text}", chat_id)
+
+# ===== زر الرد للأدمن =====
+@bot.callback_query_handler(func=lambda call: call.data.startswith("reply|"))
+def reply_user(call):
+    user_id = int(call.data.split("|")[1])
+    msg = bot.send_message(call.from_user.id, f"📩 اكتب الرد الذي تريد إرساله للمستخدم {user_id}:")
+    bot.register_next_step_handler(msg, send_reply_to_user, user_id)
+
+def send_reply_to_user(message, user_id):
+    bot.send_message(user_id, f"💬 رسالة من الإدارة:\n{message.text}")
+    bot.send_message(message.chat.id, "✅ تم إرسال الرد بنجاح.")
+
+# ===== دالة إرسال الرسائل للأدمن مع زر الرد =====
+def send_to_admin(text, user_id):
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("📩 الرد على المستخدم", callback_data=f"reply|{user_id}"))
+    bot.send_message(ADMIN_ID, text, reply_markup=markup)
 
 # ===== Webhook =====
 @server.route('/' + TOKEN, methods=['POST'])
@@ -134,17 +184,6 @@ def webhook():
     bot.remove_webhook()
     bot.set_webhook(url="https://telegram-bot-xsto.onrender.com/" + TOKEN)
     return "!", 200
-
-# ===== زر الرد من الأدمن =====
-@bot.callback_query_handler(func=lambda call: call.data.startswith("reply|"))
-def reply_user(call):
-    user_id = int(call.data.split("|")[1])
-    msg = bot.send_message(call.from_user.id, f"📩 اكتب الرد الذي تريد إرساله للمستخدم {user_id}:")
-    bot.register_next_step_handler(msg, send_reply_to_user, user_id)
-
-def send_reply_to_user(message, user_id):
-    bot.send_message(user_id, f"💬 رسالة من الإدارة:\n{message.text}")
-    bot.send_message(message.chat.id, "✅ تم إرسال الرد بنجاح.")
 
 if __name__ == "__main__":
     server.run(host="0.0.0.0", port=10000)
