@@ -25,7 +25,7 @@ def back_markup():
     markup.add("🔙 رجوع")
     return markup
 
-# ===== بداية البوت =====
+# ===== بدء البوت =====
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.send_message(message.chat.id, "👋 أهلاً بك في بوت موقع 55Bets\nاختر من الأزرار التالية:", reply_markup=main_menu_inline())
@@ -33,15 +33,17 @@ def start(message):
 # ===== التعامل مع الأزرار =====
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
-    data = call.data
     chat_id = call.message.chat.id
+    data = call.data
 
     if data == "create_account":
         msg = bot.send_message(chat_id, "📝 أرسل اسم الحساب الذي ترغب بإنشائه:", reply_markup=back_markup())
         bot.register_next_step_handler(msg, process_account_creation)
+
     elif data == "deposit":
-        msg = bot.send_message(chat_id, "💬 أرسل اسم حسابك:", reply_markup=back_markup())
+        msg = bot.send_message(chat_id, "💬 أرسل اسم حسابك للإيداع:", reply_markup=back_markup())
         bot.register_next_step_handler(msg, process_deposit_account)
+
     elif data == "withdraw":
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("📱 سيرياتيل كاش", callback_data="withdraw_syriatel"))
@@ -49,6 +51,7 @@ def callback_handler(call):
         markup.add(types.InlineKeyboardButton("🏦 حوالة (متوقف)", callback_data="withdraw_off"))
         markup.add(types.InlineKeyboardButton("🔙 رجوع", callback_data="back_main"))
         bot.send_message(chat_id, "اختر طريقة السحب:", reply_markup=markup)
+
     elif data.startswith("withdraw_"):
         method = data.split("_")[1]
         if method == "off":
@@ -56,9 +59,11 @@ def callback_handler(call):
         else:
             msg = bot.send_message(chat_id, f"💬 أرسل اسم الحساب للسحب عبر {method.capitalize()} كاش:", reply_markup=back_markup())
             bot.register_next_step_handler(msg, process_withdraw_account, method)
+
     elif data == "support":
-        msg = bot.send_message(chat_id, "📩 الرجاء شرح المشكلة بالتفصيل وسنقوم بالرد عليك في أقرب وقت ممكن:", reply_markup=back_markup())
+        msg = bot.send_message(chat_id, "📩 الرجاء شرح المشكلة بالتفصيل، وسيتم الرد عليك من الدعم بأقرب وقت ممكن:", reply_markup=back_markup())
         bot.register_next_step_handler(msg, process_support_message)
+
     elif data == "back_main":
         bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
 
@@ -70,7 +75,7 @@ def process_account_creation(message):
         return
 
     username = message.text.strip()
-    bot.send_message(chat_id, f"✅ تم إنشاء حسابك:\nUsername: {username}", reply_markup=main_menu_inline())
+    bot.send_message(chat_id, f"✅ تم استلام طلب إنشاء الحساب: {username}\nبانتظار رد الإدارة.", reply_markup=main_menu_inline())
     bot.send_message(ADMIN_ID, f"📩 طلب إنشاء حساب جديد:\nاسم الحساب: {username}\nمن المستخدم: {message.from_user.id}",
                      reply_markup=reply_user_button(message.from_user.id))
 
@@ -80,21 +85,19 @@ def process_deposit_account(message):
     if message.text.strip() == "🔙 رجوع":
         bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
         return
-
     account_name = message.text.strip()
     user_sessions[chat_id] = {"account_name": account_name}
-    msg = bot.send_message(chat_id, "💵 أرسل المبلغ الذي ترغب بإيداعه (أقل عملية 25,000 ل.س):", reply_markup=back_markup())
+    msg = bot.send_message(chat_id, "💵 أدخل المبلغ (أقل عملية 25,000 ل.س):", reply_markup=back_markup())
     bot.register_next_step_handler(msg, process_deposit_amount)
 
 def process_deposit_amount(message):
     chat_id = message.chat.id
     if message.text.strip() == "🔙 رجوع":
-        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
         user_sessions.pop(chat_id, None)
+        bot.send_message(chat_id, "رجعت للقائمة الرئيسية ✅", reply_markup=main_menu_inline())
         return
-
     try:
-        amount = int(message.text.replace(",", "").replace(".", "").strip())
+        amount = int(message.text.replace(",", "").replace(".", ""))
         if amount < 25000:
             msg = bot.send_message(chat_id, "⚠️ الحد الأدنى 25,000 ل.س، أعد الإدخال:", reply_markup=back_markup())
             bot.register_next_step_handler(msg, process_deposit_amount)
@@ -109,9 +112,6 @@ def process_deposit_amount(message):
     markup.add(types.InlineKeyboardButton("📱 سيرياتيل كاش", callback_data="pay_syriatel"))
     markup.add(types.InlineKeyboardButton("💳 شام كاش", callback_data="pay_sham"))
     bot.send_message(chat_id, "اختر طريقة الدفع:", reply_markup=markup)
-
-# ===== بقية العمليات والسحب والدعم كما في النسخة النهائية =====
-# ... (يمكن إضافة باقي الدوال هنا بنفس الصياغة)
 
 # ===== Webhook =====
 @server.route('/' + TOKEN, methods=['POST'])
@@ -128,3 +128,9 @@ def webhook():
 
 if __name__ == "__main__":
     server.run(host="0.0.0.0", port=10000)
+
+# ===== زر الرد على المستخدم =====
+def reply_user_button(user_id):
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("📩 الرد على المستخدم", callback_data=f"reply|{user_id}"))
+    return markup
