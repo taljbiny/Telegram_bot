@@ -4,11 +4,12 @@ from flask import Flask, request
 
 # ====== الإعدادات ======
 TOKEN = "8317743306:AAFGH1Acxb6fIwZ0o0T2RvNjezQFW8KWcw8"
-ADMIN_IDS = [7625893170, 1337514542]  # أكثر من إدمن
+ADMIN_IDS = [7625893170, 1337514542]  # كل الأدمنات
+
 bot = telebot.TeleBot(TOKEN)
 server = Flask(__name__)
 
-# ====== لوحة البداية ======
+# ====== واجهة المستخدم ======
 def main_menu():
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🆕 إنشاء حساب", callback_data="create"))
@@ -36,7 +37,7 @@ def send_welcome(message):
     )
     bot.send_message(message.chat.id, text, reply_markup=main_menu())
 
-# ====== المتغيرات المؤقتة ======
+# ====== متغيرات مؤقتة ======
 user_states = {}
 
 # ====== العودة للقائمة ======
@@ -59,7 +60,7 @@ def create_account(call):
 def process_create(message):
     account_name = message.text
     text = f"📥 طلب إنشاء حساب جديد:\nاسم الحساب: {account_name}\nمن المستخدم: {message.from_user.id}"
-    send_to_admins(text, message.from_user.id)
+    send_to_admin(text, message.from_user.id)
     bot.send_message(message.chat.id, f"✅ تم استلام طلب إنشاء الحساب: {account_name}\nبانتظار تأكيد العملية.", reply_markup=main_menu())
 
 # ====== إيداع ======
@@ -96,13 +97,13 @@ def deposit_method(call):
         text = (
             "💳 أرسل المبلغ إلى رقم المحفظة التالية:\n📱 82492253\n\n"
             "بعد الدفع، أرسل **صورة تأكيد الدفع**.\n"
-            "يجب أن تظهر فيها المبلغ ورقم العملية."
+            "ستظهر رسالة: سيتم تأكيد العملية، الرجاء الانتظار بضع لحظات."
         )
     else:
         text = (
             "💳 أرسل المبلغ إلى كود المحفظة التالية:\n🔑 131efe4fbccd83a811282761222eee69\n\n"
             "بعد الدفع، أرسل **صورة تأكيد الدفع**.\n"
-            "يجب أن تظهر فيها المبلغ ورقم العملية."
+            "ستظهر رسالة: سيتم تأكيد العملية، الرجاء الانتظار بضع لحظات."
         )
 
     msg = bot.send_message(call.message.chat.id, text)
@@ -113,13 +114,12 @@ def process_deposit_photo(message, account, amount, method):
         msg = bot.send_message(message.chat.id, "⚠️ أرسل صورة تأكيد الدفع:")
         return bot.register_next_step_handler(msg, process_deposit_photo, account, amount, method)
 
-    send_to_admins(
+    send_to_admin(
         f"📥 طلب إيداع جديد:\nاسم الحساب: {account}\nالمبلغ: {amount}\nالطريقة: {method}\nمن المستخدم: {message.from_user.id}",
         message.from_user.id
     )
     for admin in ADMIN_IDS:
         bot.send_photo(admin, message.photo[-1].file_id, caption="📸 صورة تأكيد الدفع")
-
     bot.send_message(message.chat.id, "✅ تم استلام طلب الإيداع.\nسيتم تأكيد العملية، الرجاء الانتظار بضع لحظات.", reply_markup=main_menu())
 
 # ====== سحب ======
@@ -160,7 +160,7 @@ def withdraw_method(call):
 
 def process_withdraw_wallet(message, account, amount, method):
     wallet = message.text
-    send_to_admins(
+    send_to_admin(
         f"📥 طلب سحب جديد:\nاسم الحساب: {account}\nالمبلغ: {amount}\nالطريقة: {method}\nمحفظة المستخدم: {wallet}\nمن المستخدم: {message.from_user.id}",
         message.from_user.id
     )
@@ -174,11 +174,11 @@ def support(call):
 
 def process_support(message):
     text = f"💬 طلب دعم فني من المستخدم {message.from_user.id}:\n\n{message.text}"
-    send_to_admins(text, message.from_user.id)
+    send_to_admin(text, message.from_user.id)
     bot.send_message(message.chat.id, "✅ تم إرسال رسالتك للدعم، الرجاء الانتظار بضع لحظات.", reply_markup=main_menu())
 
 # ====== إرسال الرسائل للأدمن مع زر الرد ======
-def send_to_admins(text, user_id):
+def send_to_admin(text, user_id):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("📩 الرد على المستخدم", callback_data=f"reply|{user_id}"))
     for admin in ADMIN_IDS:
@@ -193,7 +193,8 @@ def reply_to_user(call):
 
 def send_admin_reply(message, user_id):
     bot.send_message(user_id, f"💬 رد من الدعم:\n{message.text}")
-    bot.send_message(message.chat.id, "✅ تم إرسال الرد بنجاح.")
+    for admin in ADMIN_IDS:
+        bot.send_message(admin, f"✅ تم إرسال الرد بنجاح للمستخدم {user_id}.")
 
 # ====== Webhook مع Render ======
 @server.route('/' + TOKEN, methods=['POST'])
