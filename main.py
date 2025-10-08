@@ -4,18 +4,17 @@ from flask import Flask, request
 
 # ====== الإعدادات ======
 TOKEN = "8317743306:AAFGH1Acxb6fIwZ0o0T2RvNjezQFW8KWcw8"
-ADMIN_IDS = [7625893170, 1337514542]  # كل الأدمنات
-
+ADMIN_IDS = [7625893170, 1337514542]  # إدمنين معاً
 bot = telebot.TeleBot(TOKEN)
 server = Flask(__name__)
 
-# ====== واجهة المستخدم ======
+# ====== لوحة البداية ======
 def main_menu():
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🆕 إنشاء حساب", callback_data="create"))
     markup.add(types.InlineKeyboardButton("💰 إيداع", callback_data="deposit"))
     markup.add(types.InlineKeyboardButton("💵 سحب", callback_data="withdraw"))
-    markup.add(types.InlineKeyboardButton("📞 الاتصال بالدعم", callback_data="support"))
+    markup.add(types.InlineKeyboardButton("🧑‍💼 الاتصال بالدعم", callback_data="support"))
     return markup
 
 def back_button_inline():
@@ -27,7 +26,7 @@ def back_button_inline():
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     text = (
-        "🎰 أهلاً وسهلاً بك في بوت 55BETS الرسمي 💎\n\n"
+        "🎰 أهلاً وسهلاً بك في بوت **55BETS** الرسمي 💎\n\n"
         "من خلال هذا البوت يمكنك:\n"
         "- 🆕 إنشاء حساب جديد\n"
         "- 💰 إجراء عمليات الإيداع والسحب\n"
@@ -35,9 +34,9 @@ def send_welcome(message):
         "🌐 موقعنا الرسمي:\n"
         "https://www.55bets.net/casino/slots/240"
     )
-    bot.send_message(message.chat.id, text, reply_markup=main_menu())
+    bot.send_message(message.chat.id, text, reply_markup=main_menu(), parse_mode="Markdown")
 
-# ====== متغيرات مؤقتة ======
+# ====== المتغيرات المؤقتة ======
 user_states = {}
 
 # ====== العودة للقائمة ======
@@ -46,7 +45,7 @@ def back_main(call):
     bot.edit_message_text(
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
-        text="رجعت للقائمة الرئيسية ✅",
+        text="✅ رجعت إلى القائمة الرئيسية.",
         reply_markup=main_menu()
     )
     user_states.pop(call.message.chat.id, None)
@@ -59,9 +58,9 @@ def create_account(call):
 
 def process_create(message):
     account_name = message.text
-    text = f"📥 طلب إنشاء حساب جديد:\nاسم الحساب: {account_name}\nمن المستخدم: {message.from_user.id}"
-    send_to_admin(text, message.from_user.id)
-    bot.send_message(message.chat.id, f"✅ تم استلام طلب إنشاء الحساب: {account_name}\nبانتظار تأكيد العملية.", reply_markup=main_menu())
+    text = f"🆕 طلب إنشاء حساب جديد:\n👤 الاسم: {account_name}\n🆔 المستخدم: {message.from_user.id}"
+    send_to_admins(text, message.from_user.id)
+    bot.send_message(message.chat.id, f"✅ تم استلام طلب إنشاء الحساب: **{account_name}**\nبانتظار تأكيد العملية.", parse_mode="Markdown", reply_markup=main_menu())
 
 # ====== إيداع ======
 @bot.callback_query_handler(func=lambda call: call.data == "deposit")
@@ -86,27 +85,20 @@ def process_deposit_amount(message, account):
 
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("📲 سيرياتيل كاش", callback_data=f"deposit_syriatel|{account}|{amount}"))
-    markup.add(types.InlineKeyboardButton("🏦 شام كاش", callback_data=f"deposit_sham|{account}|{amount}"))
+    markup.add(types.InlineKeyboardButton("🏦 شام كاش (متوقفة)", callback_data="disabled"))
     markup.add(types.InlineKeyboardButton("⬅️ رجوع", callback_data="back_main"))
-    bot.send_message(message.chat.id, "اختر طريقة الدفع:", reply_markup=markup)
+    bot.send_message(message.chat.id, "💳 اختر طريقة الدفع:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("deposit_"))
 def deposit_method(call):
+    if call.data == "disabled":
+        return bot.answer_callback_query(call.id, "❌ هذه الطريقة متوقفة حالياً.")
     method, account, amount = call.data.split("|")
-    if "syriatel" in method:
-        text = (
-            "💳 أرسل المبلغ إلى رقم المحفظة التالية:\n📱 82492253\n\n"
-            "بعد الدفع، أرسل **صورة تأكيد الدفع**.\n"
-            "ستظهر رسالة: سيتم تأكيد العملية، الرجاء الانتظار بضع لحظات."
-        )
-    else:
-        text = (
-            "💳 أرسل المبلغ إلى كود المحفظة التالية:\n🔑 131efe4fbccd83a811282761222eee69\n\n"
-            "بعد الدفع، أرسل **صورة تأكيد الدفع**.\n"
-            "ستظهر رسالة: سيتم تأكيد العملية، الرجاء الانتظار بضع لحظات."
-        )
-
-    msg = bot.send_message(call.message.chat.id, text)
+    text = (
+        "💳 أرسل المبلغ إلى رقم المحفظة التالية:\n📱 **82492253** (سيرياتيل كاش)\n\n"
+        "بعد الدفع، أرسل **صورة تأكيد الدفع** تحتوي على المبلغ ورقم العملية 📸"
+    )
+    msg = bot.send_message(call.message.chat.id, text, parse_mode="Markdown")
     bot.register_next_step_handler(msg, process_deposit_photo, account, amount, method)
 
 def process_deposit_photo(message, account, amount, method):
@@ -114,13 +106,15 @@ def process_deposit_photo(message, account, amount, method):
         msg = bot.send_message(message.chat.id, "⚠️ أرسل صورة تأكيد الدفع:")
         return bot.register_next_step_handler(msg, process_deposit_photo, account, amount, method)
 
-    send_to_admin(
-        f"📥 طلب إيداع جديد:\nاسم الحساب: {account}\nالمبلغ: {amount}\nالطريقة: {method}\nمن المستخدم: {message.from_user.id}",
-        message.from_user.id
+    caption = (
+        f"💰 طلب إيداع جديد:\n"
+        f"👤 الحساب: {account}\n"
+        f"💵 المبلغ: {amount} ل.س\n"
+        f"💳 الطريقة: {method}\n"
+        f"🆔 المستخدم: {message.from_user.id}"
     )
-    for admin in ADMIN_IDS:
-        bot.send_photo(admin, message.photo[-1].file_id, caption="📸 صورة تأكيد الدفع")
-    bot.send_message(message.chat.id, "✅ تم استلام طلب الإيداع.\nسيتم تأكيد العملية، الرجاء الانتظار بضع لحظات.", reply_markup=main_menu())
+    send_to_admins(caption, message.from_user.id, message.photo[-1].file_id)
+    bot.send_message(message.chat.id, "✅ تم استلام طلب الإيداع.\nسيتم تأكيد العملية قريباً.", reply_markup=main_menu())
 
 # ====== سحب ======
 @bot.callback_query_handler(func=lambda call: call.data == "withdraw")
@@ -145,56 +139,67 @@ def process_withdraw_amount(message, account):
 
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("📲 سيرياتيل كاش", callback_data=f"withdraw_syriatel|{account}|{amount}"))
-    markup.add(types.InlineKeyboardButton("🏦 شام كاش", callback_data=f"withdraw_sham|{account}|{amount}"))
+    markup.add(types.InlineKeyboardButton("🏦 شام كاش (متوقفة)", callback_data="disabled"))
     markup.add(types.InlineKeyboardButton("⬅️ رجوع", callback_data="back_main"))
-    bot.send_message(message.chat.id, "اختر طريقة السحب:", reply_markup=markup)
+    bot.send_message(message.chat.id, "💳 اختر طريقة السحب:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("withdraw_"))
 def withdraw_method(call):
+    if call.data == "disabled":
+        return bot.answer_callback_query(call.id, "❌ هذه الطريقة متوقفة حالياً.")
     method, account, amount = call.data.split("|")
-    msg = bot.send_message(
-        call.message.chat.id,
-        f"📲 أرسل رقم أو كود محفظتك ({'سيرياتيل كاش' if 'syriatel' in method else 'شام كاش'}):"
-    )
+    msg = bot.send_message(call.message.chat.id, "📲 أرسل رقم أو كود محفظتك (سيرياتيل كاش):")
     bot.register_next_step_handler(msg, process_withdraw_wallet, account, amount, method)
 
 def process_withdraw_wallet(message, account, amount, method):
     wallet = message.text
-    send_to_admin(
-        f"📥 طلب سحب جديد:\nاسم الحساب: {account}\nالمبلغ: {amount}\nالطريقة: {method}\nمحفظة المستخدم: {wallet}\nمن المستخدم: {message.from_user.id}",
-        message.from_user.id
+    caption = (
+        f"📤 طلب سحب جديد:\n"
+        f"👤 الحساب: {account}\n"
+        f"💵 المبلغ: {amount} ل.س\n"
+        f"💳 الطريقة: {method}\n"
+        f"📲 محفظة المستخدم: {wallet}\n"
+        f"🆔 المستخدم: {message.from_user.id}"
     )
+    send_to_admins(caption, message.from_user.id)
     bot.send_message(message.chat.id, "✅ تم استلام طلب السحب.\nطلبك قيد المعالجة، سيتم تأكيد العملية قريباً.", reply_markup=main_menu())
 
 # ====== الدعم ======
 @bot.callback_query_handler(func=lambda call: call.data == "support")
 def support(call):
-    msg = bot.send_message(call.message.chat.id, "🧑‍💼 الرجاء شرح المشكلة بالتفصيل، وسيتم الرد عليك بأقرب وقت ممكن 💬")
+    msg = bot.send_message(call.message.chat.id, "💬 الرجاء شرح مشكلتك بالتفصيل ليتم الرد عليك بأقرب وقت:")
     bot.register_next_step_handler(msg, process_support)
 
 def process_support(message):
-    text = f"💬 طلب دعم فني من المستخدم {message.from_user.id}:\n\n{message.text}"
-    send_to_admin(text, message.from_user.id)
-    bot.send_message(message.chat.id, "✅ تم إرسال رسالتك للدعم، الرجاء الانتظار بضع لحظات.", reply_markup=main_menu())
+    text = f"🆘 طلب دعم فني من المستخدم {message.from_user.id}:\n\n{message.text}"
+    send_to_admins(text, message.from_user.id)
+    bot.send_message(message.chat.id, "✅ تم إرسال رسالتك للدعم، الرجاء الانتظار.", reply_markup=main_menu())
 
 # ====== إرسال الرسائل للأدمن مع زر الرد ======
-def send_to_admin(text, user_id):
+def send_to_admins(text, user_id, photo_id=None):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("📩 الرد على المستخدم", callback_data=f"reply|{user_id}"))
-    for admin in ADMIN_IDS:
-        bot.send_message(admin, text, reply_markup=markup)
+    for admin_id in ADMIN_IDS:
+        if photo_id:
+            bot.send_photo(admin_id, photo_id, caption=text, reply_markup=markup)
+        else:
+            bot.send_message(admin_id, text, reply_markup=markup)
 
 # ====== رد الأدمن ======
 @bot.callback_query_handler(func=lambda call: call.data.startswith("reply|"))
 def reply_to_user(call):
     user_id = int(call.data.split("|")[1])
     msg = bot.send_message(call.message.chat.id, "✍️ أرسل الآن الرد ليصل للمستخدم:")
-    bot.register_next_step_handler(msg, send_admin_reply, user_id)
+    bot.register_next_step_handler(msg, send_admin_reply, user_id, call.from_user.id)
 
-def send_admin_reply(message, user_id):
+def send_admin_reply(message, user_id, admin_id):
+    # إرسال الرد للمستخدم
     bot.send_message(user_id, f"💬 رد من الدعم:\n{message.text}")
-    for admin in ADMIN_IDS:
-        bot.send_message(admin, f"✅ تم إرسال الرد بنجاح للمستخدم {user_id}.")
+    bot.send_message(admin_id, "✅ تم إرسال الرد بنجاح.")
+    # إخطار الإدمن الآخر
+    for other_admin in ADMIN_IDS:
+        if other_admin != admin_id:
+            bot.send_message(other_admin, f"ℹ️ قام الإدمن الآخر بالرد على المستخدم ({user_id}):\n💬 {message.text}")
 
 # ====== Webhook مع Render ======
 @server.route('/' + TOKEN, methods=['POST'])
