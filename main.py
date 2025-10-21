@@ -85,19 +85,29 @@ def process_deposit_amount(message, account):
 
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("📲 سيرياتيل كاش", callback_data=f"deposit_syriatel|{account}|{amount}"))
-    markup.add(types.InlineKeyboardButton("🏦 شام كاش (متوقفة)", callback_data="disabled"))
+    markup.add(types.InlineKeyboardButton("🏦 شام كاش", callback_data=f"deposit_sham|{account}|{amount}"))
     markup.add(types.InlineKeyboardButton("⬅️ رجوع", callback_data="back_main"))
     bot.send_message(message.chat.id, "💳 اختر طريقة الدفع:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("deposit_"))
 def deposit_method(call):
-    if call.data == "disabled":
-        return bot.answer_callback_query(call.id, "❌ هذه الطريقة متوقفة حالياً.")
     method, account, amount = call.data.split("|")
-    text = (
-        "💳 أرسل المبلغ إلى رقم المحفظة التالية:\n📱 **82492253** (سيرياتيل كاش)\n\n"
-        "بعد الدفع، أرسل **صورة تأكيد الدفع** تحتوي على المبلغ ورقم العملية 📸"
-    )
+
+    if method == "deposit_syriatel":
+        text = (
+            "💳 أرسل المبلغ إلى رقم المحفظة التالية:\n"
+            "📱 **82492253** (سيرياتيل كاش)\n\n"
+            "بعد الدفع، أرسل **صورة تأكيد الدفع** تحتوي على المبلغ ورقم العملية 📸"
+        )
+    elif method == "deposit_sham":
+        text = (
+            "💳 أرسل المبلغ إلى محفظة شام كاش التالية:\n"
+            "🏦 **131efe4fbccd83a811282761222eee69**\n\n"
+            "بعد الدفع، أرسل **صورة تأكيد الدفع** تحتوي على المبلغ ورقم العملية 📸"
+        )
+    else:
+        return
+
     msg = bot.send_message(call.message.chat.id, text, parse_mode="Markdown")
     bot.register_next_step_handler(msg, process_deposit_photo, account, amount, method)
 
@@ -110,7 +120,7 @@ def process_deposit_photo(message, account, amount, method):
         f"💰 طلب إيداع جديد:\n"
         f"👤 الحساب: {account}\n"
         f"💵 المبلغ: {amount} ل.س\n"
-        f"💳 الطريقة: {method}\n"
+        f"💳 الطريقة: {'سيرياتيل كاش' if 'syriatel' in method else 'شام كاش'}\n"
         f"🆔 المستخدم: {message.from_user.id}"
     )
     send_to_admins(caption, message.from_user.id, message.photo[-1].file_id)
@@ -139,16 +149,14 @@ def process_withdraw_amount(message, account):
 
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("📲 سيرياتيل كاش", callback_data=f"withdraw_syriatel|{account}|{amount}"))
-    markup.add(types.InlineKeyboardButton("🏦 شام كاش (متوقفة)", callback_data="disabled"))
+    markup.add(types.InlineKeyboardButton("🏦 شام كاش", callback_data=f"withdraw_sham|{account}|{amount}"))
     markup.add(types.InlineKeyboardButton("⬅️ رجوع", callback_data="back_main"))
     bot.send_message(message.chat.id, "💳 اختر طريقة السحب:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("withdraw_"))
 def withdraw_method(call):
-    if call.data == "disabled":
-        return bot.answer_callback_query(call.id, "❌ هذه الطريقة متوقفة حالياً.")
     method, account, amount = call.data.split("|")
-    msg = bot.send_message(call.message.chat.id, "📲 أرسل رقم أو كود محفظتك (سيرياتيل كاش):")
+    msg = bot.send_message(call.message.chat.id, "📲 أرسل رقم أو كود محفظتك:")
     bot.register_next_step_handler(msg, process_withdraw_wallet, account, amount, method)
 
 def process_withdraw_wallet(message, account, amount, method):
@@ -157,7 +165,7 @@ def process_withdraw_wallet(message, account, amount, method):
         f"📤 طلب سحب جديد:\n"
         f"👤 الحساب: {account}\n"
         f"💵 المبلغ: {amount} ل.س\n"
-        f"💳 الطريقة: {method}\n"
+        f"💳 الطريقة: {'سيرياتيل كاش' if 'syriatel' in method else 'شام كاش'}\n"
         f"📲 محفظة المستخدم: {wallet}\n"
         f"🆔 المستخدم: {message.from_user.id}"
     )
@@ -193,10 +201,8 @@ def reply_to_user(call):
     bot.register_next_step_handler(msg, send_admin_reply, user_id, call.from_user.id)
 
 def send_admin_reply(message, user_id, admin_id):
-    # إرسال الرد للمستخدم
     bot.send_message(user_id, f"💬 رد من الدعم:\n{message.text}")
     bot.send_message(admin_id, "✅ تم إرسال الرد بنجاح.")
-    # إخطار الإدمن الآخر
     for other_admin in ADMIN_IDS:
         if other_admin != admin_id:
             bot.send_message(other_admin, f"ℹ️ قام الإدمن الآخر بالرد على المستخدم ({user_id}):\n💬 {message.text}")
