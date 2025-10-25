@@ -7,7 +7,7 @@ import threading
 
 # ====== الإعدادات ======
 TOKEN = "8317743306:AAFGH1Acxb6fIwZ0o0T2RvNjezQFW8KWcw8"
-ADMIN_IDS = [7625893170, 1337514542]  # إدمنين معاً
+ADMIN_IDS = [7625893170, 1337514542]
 bot = telebot.TeleBot(TOKEN)
 server = Flask(__name__)
 
@@ -36,11 +36,6 @@ def main_menu():
     markup.add(types.InlineKeyboardButton("💰 شحن الحساب", callback_data="deposit"))
     markup.add(types.InlineKeyboardButton("💵 سحب", callback_data="withdraw"))
     markup.add(types.InlineKeyboardButton("🧑‍💼 الاتصال بالدعم", callback_data="support"))
-    return markup
-
-def back_button_inline():
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("⬅️ رجوع", callback_data="back_main"))
     return markup
 
 # ====== /start ======
@@ -82,30 +77,41 @@ def create_account(call):
     bot.register_next_step_handler(msg, process_create)
 
 def process_create(message):
-    account_name = message.text
+    account_name = message.text.strip()
+    account_name_with_bvb = account_name + " BVB"
     users = load_users()
-    users[str(message.from_user.id)] = {"account_name": account_name}
+    users[str(message.from_user.id)] = {"account_name": account_name_with_bvb}
     save_users(users)
-    text = f"🆕 طلب إنشاء حساب جديد:\n👤 الاسم: {account_name}\n🆔 المستخدم: {message.from_user.id}"
+    text = f"🆕 طلب إنشاء حساب جديد:\n👤 الاسم: {account_name_with_bvb}\n🆔 المستخدم: {message.from_user.id}"
     send_to_admins(text, message.from_user.id)
-    bot.send_message(message.chat.id, f"✅ تم استلام طلب إنشاء الحساب: **{account_name}**\nبانتظار تأكيد العملية.", parse_mode="Markdown", reply_markup=main_menu())
+    bot.send_message(message.chat.id, f"✅ تم استلام طلب إنشاء الحساب: **{account_name_with_bvb}**\nبانتظار تأكيد العملية.", parse_mode="Markdown", reply_markup=main_menu())
 
 # ====== شحن الحساب ======
 @bot.callback_query_handler(func=lambda call: call.data == "deposit")
 def deposit(call):
     users = load_users()
-    if str(call.from_user.id) not in users:
-        bot.send_message(call.message.chat.id, "⚠️ يجب أولاً إنشاء حساب.", reply_markup=main_menu())
+    uid = str(call.from_user.id)
+    if uid not in users:
+        msg = bot.send_message(call.message.chat.id, "📛 أرسل اسم حسابك لتثبيته لمرة واحدة:")
+        bot.register_next_step_handler(msg, save_old_user_account)
         return
-    account = users[str(call.from_user.id)]["account_name"]
+    account = users[uid]["account_name"]
     msg = bot.send_message(call.message.chat.id, f"💵 أدخل المبلغ الذي تريد شحنه (الحد الأدنى 25,000 ل.س) لحساب **{account}**:")
     bot.register_next_step_handler(msg, process_deposit_amount, account)
+
+def save_old_user_account(message):
+    account_name = message.text.strip()
+    account_name_with_bvb = account_name + " BVB"
+    users = load_users()
+    users[str(message.from_user.id)] = {"account_name": account_name_with_bvb}
+    save_users(users)
+    bot.send_message(message.chat.id, f"✅ تم تثبيت اسم الحساب: **{account_name_with_bvb}**", reply_markup=main_menu())
 
 def process_deposit_amount(message, account):
     try:
         amount = int(message.text.replace(",", "").replace(".", ""))
         if amount < 25000:
-            msg = bot.send_message(message.chat.id, "⚠️ الحد الأدنى هو 25,000 ل.س. أرسل المبلغ مجدداً:")
+            msg = bot.send_message(message.chat.id, "⚠️ الحد الأدنى هو 25,000 ل.س. أرسل المبلغ مجددًا:")
             return bot.register_next_step_handler(msg, process_deposit_amount, account)
     except:
         msg = bot.send_message(message.chat.id, "⚠️ أدخل المبلغ بشكل صحيح:")
@@ -117,48 +123,16 @@ def process_deposit_amount(message, account):
     markup.add(types.InlineKeyboardButton("⬅️ رجوع", callback_data="back_main"))
     bot.send_message(message.chat.id, "💳 اختر طريقة شحن الحساب:", reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("deposit_"))
-def deposit_method(call):
-    method, account, amount = call.data.split("|")
-    if method == "deposit_syriatel":
-        text = f"💳 أرسل المبلغ إلى رقم المحفظة التالية:\n📱 **82492253** (سيرياتيل كاش)\n\nبعد الدفع، أرسل **صورة تأكيد الدفع**."
-    elif method == "deposit_sham":
-        text = f"💳 أرسل المبلغ إلى محفظة شام كاش التالية:\n🏦 **131efe4fbccd83a811282761222eee69**\n\nبعد الدفع، أرسل **صورة تأكيد الدفع**."
-    else:
-        return
-    msg = bot.send_message(call.message.chat.id, text, parse_mode="Markdown")
-    bot.register_next_step_handler(msg, process_deposit_photo, account, amount, method)
-
-def process_deposit_photo(message, account, amount, method):
-    if not message.photo:
-        msg = bot.send_message(message.chat.id, "⚠️ أرسل صورة تأكيد الدفع:")
-        return bot.register_next_step_handler(msg, process_deposit_photo, account, amount, method)
-
-    caption = (
-        f"💰 طلب شحن الحساب:\n"
-        f"👤 الحساب: {account}\n"
-        f"💵 المبلغ: {amount} ل.س\n"
-        f"💳 الطريقة: {'سيرياتيل كاش' if 'syriatel' in method else 'شام كاش'}\n"
-        f"🆔 المستخدم: {message.from_user.id}"
-    )
-    markup = types.InlineKeyboardMarkup()
-    markup.add(
-        types.InlineKeyboardButton("✅ تأكيد العملية", callback_data=f"confirm_deposit|{message.from_user.id}|{amount}|{method}"),
-        types.InlineKeyboardButton("❌ رفض العملية", callback_data=f"reject_deposit|{message.from_user.id}|{amount}|{method}")
-    )
-    markup.add(types.InlineKeyboardButton("📩 الرد على المستخدم", callback_data=f"reply|{message.from_user.id}"))
-    for admin_id in ADMIN_IDS:
-        bot.send_photo(admin_id, message.photo[-1].file_id, caption=caption, reply_markup=markup)
-    bot.send_message(message.chat.id, "✅ تم استلام طلب شحن الحساب.\nسيتم تأكيد العملية قريباً.", reply_markup=main_menu())
-
 # ====== سحب ======
 @bot.callback_query_handler(func=lambda call: call.data == "withdraw")
 def withdraw(call):
     users = load_users()
-    if str(call.from_user.id) not in users:
-        bot.send_message(call.message.chat.id, "⚠️ يجب أولاً إنشاء حساب.", reply_markup=main_menu())
+    uid = str(call.from_user.id)
+    if uid not in users:
+        msg = bot.send_message(call.message.chat.id, "📛 يجب أن يكون لديك حساب لتتمكن من السحب. أنشئ حساب أولاً:")
+        bot.register_next_step_handler(msg, save_old_user_account)
         return
-    account = users[str(call.from_user.id)]["account_name"]
+    account = users[uid]["account_name"]
     msg = bot.send_message(call.message.chat.id, f"💵 أدخل المبلغ الذي تريد سحبه (الحد الأدنى 25,000 ل.س) من حساب **{account}**:")
     bot.register_next_step_handler(msg, process_withdraw_amount, account)
 
@@ -178,50 +152,7 @@ def process_withdraw_amount(message, account):
     markup.add(types.InlineKeyboardButton("⬅️ رجوع", callback_data="back_main"))
     bot.send_message(message.chat.id, "💳 اختر طريقة السحب:", reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("withdraw_"))
-def withdraw_method(call):
-    method, account, amount = call.data.split("|")
-    msg = bot.send_message(call.message.chat.id, "📲 أرسل رقم أو كود محفظتك:")
-    bot.register_next_step_handler(msg, process_withdraw_wallet, account, amount, method)
-
-def process_withdraw_wallet(message, account, amount, method):
-    wallet = message.text
-    caption = (
-        f"📤 طلب سحب جديد:\n"
-        f"👤 الحساب: {account}\n"
-        f"💵 المبلغ: {amount} ل.س\n"
-        f"💳 الطريقة: {'سيرياتيل كاش' if 'syriatel' in method else 'شام كاش'}\n"
-        f"📲 محفظة المستخدم: {wallet}\n"
-        f"🆔 المستخدم: {message.from_user.id}"
-    )
-    markup = types.InlineKeyboardMarkup()
-    markup.add(
-        types.InlineKeyboardButton("✅ تأكيد العملية", callback_data=f"confirm_withdraw|{message.from_user.id}|{amount}|{method}|{wallet}"),
-        types.InlineKeyboardButton("❌ رفض العملية", callback_data=f"reject_withdraw|{message.from_user.id}|{amount}|{method}|{wallet}")
-    )
-    markup.add(types.InlineKeyboardButton("📩 الرد على المستخدم", callback_data=f"reply|{message.from_user.id}"))
-    for admin_id in ADMIN_IDS:
-        bot.send_message(admin_id, caption, reply_markup=markup)
-    bot.send_message(message.chat.id, "✅ تم استلام طلب السحب.\nطلبك قيد المعالجة، سيتم تأكيد العملية قريباً.", reply_markup=main_menu())
-
-# ====== تأكيد/رفض العمليات ======
-@bot.callback_query_handler(func=lambda call: call.data.startswith(("confirm_deposit", "reject_deposit", "confirm_withdraw", "reject_withdraw")))
-def handle_confirm_reject(call):
-    data = call.data.split("|")
-    action = data[0]
-    user_id = int(data[1])
-
-    # إزالة الأزرار
-    bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
-
-    if action.startswith("confirm"):
-        bot.send_message(user_id, f"✅ تم تأكيد عمليتك بنجاح.")
-        bot.send_message(call.from_user.id, f"🟢 تم تأكيد العملية للمستخدم ({user_id}).")
-    elif action.startswith("reject"):
-        bot.send_message(user_id, f"❌ تم رفض العملية بسبب عدم التطابق، الرجاء التواصل مع الدعم.")
-        bot.send_message(call.from_user.id, f"🔴 تم رفض العملية للمستخدم ({user_id}).")
-
-# ====== الدعم ======
+# ====== دعم فني ======
 @bot.callback_query_handler(func=lambda call: call.data == "support")
 def support(call):
     msg = bot.send_message(call.message.chat.id, "💬 الرجاء شرح مشكلتك بالتفصيل ليتم الرد عليك بأقرب وقت:")
@@ -232,10 +163,12 @@ def process_support(message):
     send_to_admins(text, message.from_user.id)
     bot.send_message(message.chat.id, "✅ تم إرسال رسالتك للدعم، الرجاء الانتظار.", reply_markup=main_menu())
 
-# ====== إرسال الرسائل للأدمن مع زر الرد ======
+# ====== إرسال الرسائل للأدمن مع زر الرد + تأكيد/رفض ======
 def send_to_admins(text, user_id, photo_id=None):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("📩 الرد على المستخدم", callback_data=f"reply|{user_id}"))
+    markup.add(types.InlineKeyboardButton("✅ تأكيد العملية", callback_data=f"confirm|{user_id}"))
+    markup.add(types.InlineKeyboardButton("❌ رفض العملية", callback_data=f"reject|{user_id}"))
     for admin_id in ADMIN_IDS:
         if photo_id:
             bot.send_photo(admin_id, photo_id, caption=text, reply_markup=markup)
@@ -255,6 +188,20 @@ def send_admin_reply(message, user_id, admin_id):
     for other_admin in ADMIN_IDS:
         if other_admin != admin_id:
             bot.send_message(other_admin, f"ℹ️ قام الإدمن الآخر بالرد على المستخدم ({user_id}):\n💬 {message.text}")
+
+# ====== تأكيد / رفض العملية ======
+@bot.callback_query_handler(func=lambda call: call.data.startswith(("confirm|", "reject|")))
+def process_confirm_reject(call):
+    action, user_id = call.data.split("|")
+    user_id = int(user_id)
+    if action == "confirm":
+        bot.send_message(user_id, "✅ تم تأكيد العملية بنجاح.")
+        bot.answer_callback_query(call.id, "تم تأكيد العملية.")
+    else:
+        bot.send_message(user_id, "❌ تم رفض العملية بسبب عدم التطابق.")
+        bot.answer_callback_query(call.id, "تم رفض العملية.")
+    # إزالة الأزرار بعد الضغط
+    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
 
 # ====== Webhook مع Render ======
 @server.route('/' + TOKEN, methods=['POST'])
