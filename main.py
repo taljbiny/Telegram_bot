@@ -10,19 +10,20 @@ ADMIN_ID = 7625893170
 SYRIATEL_CODE = "82492253"
 SHAM_CODE = "131efe4fbccd83a811282761222eee69"
 RENDER_URL = "https://telegram-bot-xsto.onrender.com"
+DATA_FILE = "data.json"
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-DATA_FILE = "data.json"
-
 # ====== دوال حفظ وقراءة البيانات ======
 def load_data():
-    if not os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump({"user_accounts": {}, "pending_deposits": {}, "pending_withdraws": {}, "pending_deletes": {}}, f)
+    if not os.path.exists(DATA_FILE) or os.path.getsize(DATA_FILE) == 0:
+        return {"user_accounts": {}, "pending_deposits": {}, "pending_withdraws": {}, "pending_deletes": {}}
     with open(DATA_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        try:
+            return json.load(f)
+        except json.JSONDecodeError:
+            return {"user_accounts": {}, "pending_deposits": {}, "pending_withdraws": {}, "pending_deletes": {}}
 
 def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
@@ -42,7 +43,7 @@ def start(message):
     )
     welcome_text = (
         "👋 أهلاً بك في نظام 55BETS!\n\n"
-        f"📌 الموقع الرسمي: [55BETS]({RENDER_URL})\n"
+        "📌 الموقع الرسمي: [55BETS](https://www.55bets.net/#/casino/)\n"
         "اختر إحدى الخيارات التالية للبدء:"
     )
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode="Markdown")
@@ -231,6 +232,5 @@ def index():
     return "Webhook Set!"
 
 if __name__ == "__main__":
-    import os
     PORT = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=PORT)
