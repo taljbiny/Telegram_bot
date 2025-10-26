@@ -33,15 +33,12 @@ def save_data(data):
 # ====== القائمة الرئيسية مع زر إنشاء حساب ======
 def main_menu(chat_id, include_create=False):
     markup = types.InlineKeyboardMarkup()
-    # أزرار الإيداع والسحب
     markup.add(
         types.InlineKeyboardButton("💳 شحن الحساب", callback_data="deposit"),
         types.InlineKeyboardButton("💸 سحب", callback_data="withdraw")
     )
-    # زر إنشاء حساب إذا اخترنا تضمينه
     if include_create:
         markup.add(types.InlineKeyboardButton("🆕 إنشاء حساب", callback_data="create_account"))
-    # أزرار الحذف والدعم
     markup.add(
         types.InlineKeyboardButton("🗑️ حذف الحساب", callback_data="delete_account"),
         types.InlineKeyboardButton("📞 الدعم", callback_data="support")
@@ -75,6 +72,10 @@ def ask_account_name(message):
 def process_account_name(message):
     data = load_data()
     user_id = str(message.chat.id)
+    # التأكد من عدم وجود حساب مسبق
+    if user_id in data["user_accounts"]:
+        bot.send_message(message.chat.id, "❌ لديك حساب مسجل مسبقاً، يجب حذف الحساب القديم أولاً قبل إنشاء حساب جديد.", reply_markup=main_menu(message.chat.id))
+        return
     data["user_accounts"][user_id] = message.text
     save_data(data)
     bot.send_message(message.chat.id, f"✅ تم تسجيل الحساب باسم: {message.text}", reply_markup=main_menu(message.chat.id))
@@ -83,11 +84,20 @@ def process_account_name(message):
 # ====== زر إنشاء حساب ======
 @bot.callback_query_handler(func=lambda call: call.data == "create_account")
 def create_account(call):
+    data = load_data()
+    user_id = str(call.message.chat.id)
+    # إذا كان لديه حساب قديم
+    if user_id in data["user_accounts"]:
+        bot.answer_callback_query(call.id, "❌ لديك حساب مسبق، احذف الحساب القديم أولاً.")
+        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+        return
     ask_account_name(call.message)
+    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
 
 # ====== شحن الحساب ======
 @bot.callback_query_handler(func=lambda call: call.data == "deposit")
 def deposit(call):
+    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
     data = load_data()
     user_id = str(call.message.chat.id)
     if user_id not in data["user_accounts"]:
@@ -114,6 +124,7 @@ def deposit_amount_step(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("deposit_"))
 def deposit_method(call):
+    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
     parts = call.data.split("_")
     method = parts[1]
     amount = parts[2]
@@ -140,6 +151,7 @@ def confirm_deposit_image(message, account, amount, method_name):
 # ====== سحب الحساب ======
 @bot.callback_query_handler(func=lambda call: call.data.startswith("withdraw"))
 def withdraw_method(call):
+    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
     data = load_data()
     user_id = str(call.message.chat.id)
     if user_id not in data["user_accounts"]:
@@ -174,6 +186,7 @@ def withdraw_amount_step(message):
 # ====== حذف الحساب ======
 @bot.callback_query_handler(func=lambda call: call.data == "delete_account")
 def delete_account(call):
+    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
     user_id = str(call.message.chat.id)
     data = load_data()
     if user_id not in data["user_accounts"]:
@@ -187,6 +200,7 @@ def delete_account(call):
 # ====== الدعم ======
 @bot.callback_query_handler(func=lambda call: call.data == "support")
 def support(call):
+    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
     bot.send_message(call.message.chat.id, "📩 اكتب رسالتك للدعم، وسيتم إرسالها مباشرة للإدمن:")
     bot.register_next_step_handler(call.message, send_support_message)
 
@@ -203,14 +217,19 @@ def admin_reply(message):
         if user_line:
             user_id = int(user_line.split("المستخدم:")[1].strip())
             response_text = message.text.strip().lower()
-            # تنبيهات تلقائية
             auto_response = None
+            # تنبيهات تلقائية
             if "قبول" in response_text:
                 if "شحن" in message.reply_to_message.text or "deposit" in message.reply_to_message.text:
                     auto_response = "✅ تم شحن حسابك بنجاح."
                 elif "سحب" in message.reply_to_message.text or "withdraw" in message.reply_to_message.text:
                     auto_response = "✅ تم تنفيذ طلب السحب الخاص بك."
                 elif "حذف" in message.reply_to_message.text or "delete" in message.reply_to_message.text:
+                    # حذف الحساب من البيانات
+                    data = load_data()
+                    if str(user_id) in data["user_accounts"]:
+                        del data["user_accounts"][str(user_id)]
+                        save_data(data)
                     auto_response = "✅ تم حذف حسابك بنجاح."
             elif "رفض" in response_text:
                 if "شحن" in message.reply_to_message.text or "deposit" in message.reply_to_message.text:
@@ -219,7 +238,7 @@ def admin_reply(message):
                     auto_response = "❌ لم يتم تنفيذ طلب السحب، يرجى التواصل مع الدعم."
                 elif "حذف" in message.reply_to_message.text or "delete" in message.reply_to_message.text:
                     auto_response = "❌ لم يتم حذف حسابك."
-            # إذا موجود تنبيه تلقائي، أضفه مع نص الإدمن إذا كتب أي شيء
+            # دمج الرد التلقائي مع نص الإدمن إذا كتب أي شيء
             if auto_response:
                 final_text = f"{auto_response}\n\n📩 رسالة من الإدارة:\n{message.text}"
             else:
