@@ -70,23 +70,7 @@ def start(message):
         text = f"👋 أهلاً بك في نظام [55BETS]({SITE_LINK})!\nاختر العملية من الأزرار أدناه:"
         bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
 
-# ====== إنشاء حساب ======
-def ask_account_info(message):
-    msg = bot.send_message(message.chat.id, "📝 أرسل اسم الحساب وكلمة السر بصيغة:\nUsername: اسم الحساب\nPassword: كلمة السر", reply_markup=back_to_menu())
-    bot.register_next_step_handler(msg, process_account_info)
-
-def process_account_info(message):
-    if message.text.lower() == "🔙 القائمة الرئيسية":
-        bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
-        return
-    data = load_data()
-    user_id = str(message.chat.id)
-    if user_id in data["user_accounts"]:
-        bot.send_message(message.chat.id, "❌ لديك حساب مسبق، احذف الحساب القديم أولاً.", reply_markup=main_menu(message.chat.id))
-        return
-    # إرسال طلب للإدمن
-    bot.send_message(ADMIN_ID, f"📩 طلب إنشاء حساب جديد:\n👤 المستخدم: {user_id}\n{message.text}", reply_markup=admin_controls(user_id))
-
+# ====== إنشاء الحساب ======
 @bot.callback_query_handler(func=lambda call: call.data == "create_account")
 def create_account(call):
     bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
@@ -95,18 +79,18 @@ def create_account(call):
     if user_id in data["user_accounts"]:
         bot.answer_callback_query(call.id, "❌ لديك حساب مسبق، احذف الحساب القديم أولاً.")
         return
-    ask_account_info(call.message)
+    # إرسال طلب إنشاء حساب للإدمن مباشرة
+    bot.send_message(ADMIN_ID, f"📩 طلب إنشاء حساب جديد:\n👤 المستخدم: {user_id}", reply_markup=admin_controls(user_id))
+    bot.send_message(call.message.chat.id, "⏳ تم إرسال طلب إنشاء الحساب للإدارة، يرجى الانتظار.", reply_markup=main_menu(user_id))
 
-# ====== شحن / سحب / حذف / دعم ======
-# سيتم التعامل معهم بنفس طريقة إنشاء الحساب مع ارسال طلب للإدمن وزر التحكم الثلاثي
-# على سبيل المثال، شحن الحساب:
+# ====== شحن الحساب ======
 @bot.callback_query_handler(func=lambda call: call.data.startswith("deposit"))
 def deposit_handler(call):
     bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
-    data = load_data()
     user_id = str(call.message.chat.id)
+    data = load_data()
     if user_id not in data["user_accounts"]:
-        ask_account_info(call.message)
+        bot.send_message(user_id, "❌ ليس لديك حساب، يرجى إنشاء حساب أولاً.", reply_markup=main_menu(user_id, include_create=True))
         return
     msg = bot.send_message(call.message.chat.id, f"💰 أدخل المبلغ لشحن الحساب (الحد الأدنى {MIN_AMOUNT}):", reply_markup=back_to_menu())
     bot.register_next_step_handler(msg, deposit_amount_step)
@@ -120,15 +104,66 @@ def deposit_amount_step(message):
         msg = bot.send_message(message.chat.id, f"❌ الحد الأدنى للشحن هو {MIN_AMOUNT}.\n💰 أدخل مبلغ صحيح:", reply_markup=back_to_menu())
         bot.register_next_step_handler(msg, deposit_amount_step)
         return
-    user_id = str(message.chat.id)
-    data = load_data()
-    account = data["user_accounts"][user_id]
     markup = types.InlineKeyboardMarkup()
     markup.add(
         types.InlineKeyboardButton("سيرياتيل كاش", callback_data=f"deposit_syriatel_{amount}"),
         types.InlineKeyboardButton("شام كاش", callback_data=f"deposit_sham_{amount}")
     )
     bot.send_message(message.chat.id, "💳 اختر طريقة الدفع:", reply_markup=markup)
+
+# ====== سحب الحساب ======
+@bot.callback_query_handler(func=lambda call: call.data.startswith("withdraw"))
+def withdraw_handler(call):
+    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+    user_id = str(call.message.chat.id)
+    data = load_data()
+    if user_id not in data["user_accounts"]:
+        bot.send_message(user_id, "❌ ليس لديك حساب، يرجى إنشاء حساب أولاً.", reply_markup=main_menu(user_id, include_create=True))
+        return
+    msg = bot.send_message(call.message.chat.id, f"💰 أدخل المبلغ للسحب (الحد الأدنى {MIN_AMOUNT}):", reply_markup=back_to_menu())
+    bot.register_next_step_handler(msg, withdraw_amount_step)
+
+def withdraw_amount_step(message):
+    if message.text.lower() == "🔙 القائمة الرئيسية":
+        bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
+        return
+    amount = message.text
+    if not check_min_amount(amount):
+        msg = bot.send_message(message.chat.id, f"❌ الحد الأدنى للسحب هو {MIN_AMOUNT}.\n💰 أدخل مبلغ صحيح:", reply_markup=back_to_menu())
+        bot.register_next_step_handler(msg, withdraw_amount_step)
+        return
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("سيرياتيل كاش", callback_data=f"withdraw_syriatel_{amount}"),
+        types.InlineKeyboardButton("شام كاش", callback_data=f"withdraw_sham_{amount}")
+    )
+    bot.send_message(message.chat.id, "💳 اختر طريقة السحب:", reply_markup=markup)
+
+# ====== حذف الحساب ======
+@bot.callback_query_handler(func=lambda call: call.data == "delete_account")
+def delete_account(call):
+    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+    user_id = str(call.message.chat.id)
+    data = load_data()
+    if user_id not in data["user_accounts"]:
+        bot.send_message(user_id, "❌ لا يوجد لديك حساب.", reply_markup=main_menu(user_id, include_create=True))
+        return
+    bot.send_message(ADMIN_ID, f"🗑️ طلب حذف الحساب:\n👤 المستخدم: {user_id}", reply_markup=admin_controls(user_id))
+    bot.send_message(user_id, "📩 تم إرسال طلب حذف الحساب للإدارة، يرجى الانتظار.", reply_markup=main_menu(user_id))
+
+# ====== الدعم ======
+@bot.callback_query_handler(func=lambda call: call.data == "support")
+def support_handler(call):
+    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+    msg = bot.send_message(call.message.chat.id, "📩 اكتب رسالتك للدعم:", reply_markup=back_to_menu())
+    bot.register_next_step_handler(msg, send_support_message)
+
+def send_support_message(message):
+    if message.text.lower() == "🔙 القائمة الرئيسية":
+        bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
+        return
+    bot.send_message(ADMIN_ID, f"📩 رسالة من المستخدم {message.chat.id}:\n{message.text}", reply_markup=admin_controls(str(message.chat.id)))
+    bot.send_message(message.chat.id, "✅ تم إرسال رسالتك إلى الدعم. ستتلقى الرد قريبًا.", reply_markup=main_menu(message.chat.id))
 
 # ====== لوحة تحكم الإدمن ======
 def admin_controls(user_id):
@@ -145,21 +180,17 @@ def admin_action(call):
     parts = call.data.split("_")
     action = parts[1]
     user_id = parts[2]
-    bot.edit_message_reply_markup(ADMIN_ID, call.message.message_id, reply_markup=None)
+    # الأزرار لا تختفي للإدمن
     if action == "manual":
         msg = bot.send_message(ADMIN_ID, f"📝 اكتب الرد للمستخدم {user_id}:")
         bot.register_next_step_handler(msg, lambda m: send_manual_reply(m, user_id))
     elif action == "accept":
-        # حفظ الحساب إذا كان إنشاء
         msg_text = call.message.text
-        if "Username:" in msg_text and "Password:" in msg_text:
-            lines = msg_text.split("\n")
-            username = lines[1].replace("Username:","").strip() if "Username:" in lines[1] else lines[1].strip()
-            password = lines[2].replace("Password:","").strip() if "Password:" in lines[2] else lines[2].strip()
+        # حفظ الحساب إذا كان إنشاء
+        if "طلب إنشاء حساب جديد" in msg_text:
             data = load_data()
-            data["user_accounts"][user_id] = {"username": username, "password": password}
-            save_data(data)
-            bot.send_message(int(user_id), f"✅ تم إنشاء حسابك بنجاح!\nUsername: {username}\nPassword: {password}", reply_markup=main_menu(user_id))
+            # الافتراض: الإدمن يرسل في الرد رسالة بصيغة Username/Password منفصلة
+            bot.send_message(ADMIN_ID, f"📝 الرجاء الرد باسم الحساب وكلمة السر بصيغة:\nUsername: اسم الحساب\nPassword: كلمة السر")
         else:
             bot.send_message(int(user_id), "✅ تم قبول طلبك.", reply_markup=main_menu(user_id))
     elif action == "reject":
