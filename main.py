@@ -1,6 +1,8 @@
 import telebot
 from telebot import types
 from flask import Flask, request
+import json
+import os
 
 # ====== الإعدادات ======
 TOKEN = "8317743306:AAFGH1Acxb6fIwZ0o0T2RvNjezQFW8KWcw8"
@@ -12,11 +14,21 @@ RENDER_URL = "https://www.55bets.net/#/casino/"
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# ====== تخزين بيانات المستخدم مؤقت ======
-user_accounts = {}
-pending_deletes = {}
-pending_deposits = {}
-pending_withdraws = {}
+DATA_FILE = "data.json"
+
+# ====== دوال حفظ وقراءة البيانات ======
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump({"user_accounts": {}, "pending_deposits": {}, "pending_withdraws": {}, "pending_deletes": {}}, f)
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def save_data(data):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+data = load_data()
 
 # ====== واجهة البداية + ترحيب + رابط الموقع ======
 @bot.message_handler(commands=['start'])
@@ -42,7 +54,9 @@ def create_account(call):
     bot.register_next_step_handler(call.message, process_account_name)
 
 def process_account_name(message):
-    user_accounts[message.chat.id] = message.text
+    data = load_data()
+    data["user_accounts"][str(message.chat.id)] = message.text
+    save_data(data)
     bot.send_message(message.chat.id, f"✅ تم إرسال طلب إنشاء الحساب.\nفي انتظار موافقة الأدمن.")
     bot.send_message(ADMIN_ID, f"📩 طلب إنشاء حساب جديد:\n👤 المستخدم: {message.chat.id}\n📛 الاسم: {message.text}")
 
@@ -73,12 +87,8 @@ def deposit_method(call):
     account = parts[2]
     amount = parts[3]
 
-    if method == "syriatel":
-        code = SYRIATEL_CODE
-        method_name = "سيرياتيل كاش"
-    else:
-        code = SHAM_CODE
-        method_name = "شام كاش"
+    method_name = "سيرياتيل كاش" if method == "syriatel" else "شام كاش"
+    code = SYRIATEL_CODE if method == "syriatel" else SHAM_CODE
 
     bot.send_message(call.message.chat.id, f"📱 كود محفظة {method_name}:\n`{code}`", parse_mode="Markdown")
     bot.send_message(call.message.chat.id, "📸 أرسل صورة تأكيد الدفع.")
@@ -89,7 +99,10 @@ def confirm_deposit_image(message, account, amount, method_name):
         bot.send_message(message.chat.id, "❌ يرجى إرسال صورة تأكيد الدفع فقط.")
         return
     file_id = message.photo[-1].file_id
-    pending_deposits[message.chat.id] = {"account": account, "amount": amount, "method": method_name, "file_id": file_id}
+    data = load_data()
+    data["pending_deposits"][str(message.chat.id)] = {"account": account, "amount": amount, "method": method_name, "file_id": file_id}
+    save_data(data)
+
     markup = types.InlineKeyboardMarkup()
     markup.add(
         types.InlineKeyboardButton("✅ تأكيد الإيداع", callback_data=f"approve_deposit_{message.chat.id}"),
@@ -111,7 +124,10 @@ def process_withdraw_amount(message):
 
 def process_withdraw_wallet(message, amount):
     wallet = message.text
-    pending_withdraws[message.chat.id] = {"amount": amount, "wallet": wallet}
+    data = load_data()
+    data["pending_withdraws"][str(message.chat.id)] = {"amount": amount, "wallet": wallet}
+    save_data(data)
+
     markup = types.InlineKeyboardMarkup()
     markup.add(
         types.InlineKeyboardButton("✅ تأكيد السحب", callback_data=f"approve_withdraw_{message.chat.id}"),
@@ -124,7 +140,10 @@ def process_withdraw_wallet(message, amount):
 @bot.callback_query_handler(func=lambda call: call.data == "delete_account")
 def delete_account(call):
     bot.send_message(call.message.chat.id, "⚠️ هل أنت متأكد من رغبتك بحذف حسابك؟ سيتم إرسال طلب للإدارة للموافقة.")
-    pending_deletes[call.message.chat.id] = True
+    data = load_data()
+    data["pending_deletes"][str(call.message.chat.id)] = True
+    save_data(data)
+
     markup = types.InlineKeyboardMarkup()
     markup.add(
         types.InlineKeyboardButton("✅ تأكيد الحذف", callback_data=f"request_delete_{call.message.chat.id}"),
@@ -150,28 +169,41 @@ def cancel_delete(call):
 # ====== موافقات ورفض من الأدمن ======
 @bot.callback_query_handler(func=lambda call: call.data.startswith(("approve_", "reject_")))
 def handle_admin_actions(call):
-    data = call.data.split("_")
-    action = data[0]
-    action_type = data[1]
-    user_id = int(data[2])
+    data_file = load_data()
+    data_split = call.data.split("_")
+    action = data_split[0]
+    action_type = data_split[1]
+    user_id = int(data_split[2])
 
     if action_type == "deposit":
         if action == "approve":
             bot.send_message(user_id, "✅ تمت الموافقة على عملية الإيداع الخاصة بك، وتم إضافة الرصيد.")
+            if str(user_id) in data_file["pending_deposits"]:
+                del data_file["pending_deposits"][str(user_id)]
         else:
             bot.send_message(user_id, "❌ تم رفض عملية الإيداع الخاصة بك.")
+            if str(user_id) in data_file["pending_deposits"]:
+                del data_file["pending_deposits"][str(user_id)]
+
     elif action_type == "withdraw":
         if action == "approve":
             bot.send_message(user_id, "✅ تمت الموافقة على عملية السحب الخاصة بك.")
+            if str(user_id) in data_file["pending_withdraws"]:
+                del data_file["pending_withdraws"][str(user_id)]
         else:
             bot.send_message(user_id, "❌ تم رفض عملية السحب الخاصة بك.")
+            if str(user_id) in data_file["pending_withdraws"]:
+                del data_file["pending_withdraws"][str(user_id)]
+
     elif action_type == "delete":
         if action == "approve":
-            user_accounts.pop(user_id, None)
+            if str(user_id) in data_file["user_accounts"]:
+                del data_file["user_accounts"][str(user_id)]
             bot.send_message(user_id, "🗑️ تمت الموافقة على حذف حسابك.\nيمكنك الآن إنشاء حساب جديد من خلال /start.")
         else:
             bot.send_message(user_id, "❌ تم رفض طلب حذف الحساب من قبل الإدارة.")
 
+    save_data(data_file)
     bot.answer_callback_query(call.id, "تم تنفيذ الإجراء ✅")
 
 # ====== رد الأدمن على المستخدم ======
@@ -199,4 +231,6 @@ def index():
     return "Webhook Set!"
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    import os
+    PORT = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=PORT)
