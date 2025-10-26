@@ -226,13 +226,16 @@ def handle_deposit_photo(message, amount, method_name):
     user_id = str(message.chat.id)
     pending_deposits[user_id] = {"amount": amount, "method": method_name, "file_id": file_id}
 
-    bot.send_photo(
-        ADMIN_ID,
-        file_id,
-        caption=f"💳 طلب شحن جديد:\n👤 المستخدم: {user_id}\n💰 المبلغ: {amount}\n💼 الطريقة: {method_name}",
-        reply_markup=admin_controls(user_id)
-    )
-    bot.send_message(message.chat.id, "📩 تم إرسال طلب الشحن للإدارة، يرجى الانتظار.", reply_markup=main_menu(message.chat.id))
+    # احصل على اسم المستخدم من البيانات
+data = load_data()
+username = data["user_accounts"].get(user_id, {}).get("username", "غير معروف")
+
+bot.send_photo(
+    ADMIN_ID,
+    file_id,
+    caption=f"💳 طلب شحن جديد:\n👤 المستخدم: {user_id}\n👤 اسم الحساب: {username}\n💰 المبلغ: {amount}\n💼 الطريقة: {method_name}",
+    reply_markup=admin_controls(user_id)
+)    bot.send_message(message.chat.id, "📩 تم إرسال طلب الشحن للإدارة، يرجى الانتظار.", reply_markup=main_menu(message.chat.id))
 
 # ====== سحب الحساب ======
 @bot.callback_query_handler(func=lambda call: call.data == "withdraw")
@@ -293,11 +296,15 @@ def confirm_withdraw_wallet(message, amount, method_name):
     user_id = str(message.chat.id)
     pending_withdraws[user_id] = {"amount": amount, "method": method_name, "wallet": wallet}
 
-    bot.send_message(
-        ADMIN_ID,
-        f"💸 طلب سحب جديد:\n👤 المستخدم: {user_id}\n💰 المبلغ: {amount}\n💼 الطريقة: {method_name}\n📥 المحفظة: {wallet}",
-        reply_markup=admin_controls(user_id)
-    )
+    # احصل على اسم المستخدم من البيانات
+data = load_data()
+username = data["user_accounts"].get(user_id, {}).get("username", "غير معروف")
+
+bot.send_message(
+    ADMIN_ID,
+    f"💸 طلب سحب جديد:\n👤 المستخدم: {user_id}\n👤 اسم الحساب: {username}\n💰 المبلغ: {amount}\n💼 الطريقة: {method_name}\n📥 المحفظة: {wallet}",
+    reply_markup=admin_controls(user_id)
+)
     bot.send_message(message.chat.id, "📩 تم إرسال طلب السحب للإدارة، يرجى الانتظار.", reply_markup=main_menu(message.chat.id))
 
 # ====== حذف الحساب ======
@@ -314,7 +321,9 @@ def delete_account(call):
         return
     
     pending_deletes[user_id] = {"account": data["user_accounts"][user_id]}
-    bot.send_message(ADMIN_ID, f"🗑️ طلب حذف الحساب:\n👤 المستخدم: {user_id}", reply_markup=admin_controls(user_id))
+    data = load_data()
+username = data["user_accounts"].get(user_id, {}).get("username", "غير معروف")
+bot.send_message(ADMIN_ID, f"🗑️ طلب حذف الحساب:\n👤 المستخدم: {user_id}\n👤 اسم الحساب: {username}", reply_markup=admin_controls(user_id))
     bot.send_message(user_id, "📩 تم إرسال طلب حذف الحساب للإدارة، يرجى الانتظار.", reply_markup=main_menu(user_id))
 
 # ====== الدعم ======
