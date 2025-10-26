@@ -72,6 +72,9 @@ def check_min_amount(amount):
     except:
         return False
 
+def is_back_command(text):
+    return text and "🔙 القائمة الرئيسية" in text
+
 # ====== /start ======
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -94,8 +97,14 @@ def show_main_menu(call):
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
     except:
         pass
-    data = load_data()
+    
+    # تنظيف أي عمليات مؤقتة
     user_id = str(call.message.chat.id)
+    pending_accounts.pop(user_id, None)
+    pending_deposits.pop(user_id, None)
+    pending_withdraws.pop(user_id, None)
+    
+    data = load_data()
     include_create = user_id not in data["user_accounts"]
     bot.send_message(call.message.chat.id, "🔙 القائمة الرئيسية:", reply_markup=main_menu(call.message.chat.id, include_create=include_create))
 
@@ -106,6 +115,7 @@ def create_account(call):
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
     except:
         pass
+    
     data = load_data()
     user_id = str(call.message.chat.id)
     if user_id in data["user_accounts"]:
@@ -116,43 +126,43 @@ def create_account(call):
     bot.register_next_step_handler(msg, collect_username_step)
 
 def collect_username_step(message):
+    if is_back_command(message.text):
+        bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id, include_create=True))
+        return
+    
     if not message.text:
         msg = bot.send_message(message.chat.id, "❌ الرجاء إرسال اسم مستخدم نصي:", reply_markup=back_to_menu())
         bot.register_next_step_handler(msg, collect_username_step)
         return
-    if message.text.strip().lower() == "🔙 القائمة الرئيسية":
-        bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
-        return
     
     user_id = str(message.chat.id)
     username = message.text.strip()
-    pending_accounts[user_id] = {"username": username, "password": None, "raw_from_user": None}
+    pending_accounts[user_id] = {"username": username, "password": None}
     
     msg = bot.send_message(message.chat.id, "🔐 الآن أرسل كلمة السر التي تريدها:", reply_markup=back_to_menu())
     bot.register_next_step_handler(msg, collect_password_step)
 
 def collect_password_step(message):
+    if is_back_command(message.text):
+        user_id = str(message.chat.id)
+        pending_accounts.pop(user_id, None)
+        bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id, include_create=True))
+        return
+    
     if not message.text:
         msg = bot.send_message(message.chat.id, "❌ الرجاء إرسال كلمة سر نصية:", reply_markup=back_to_menu())
         bot.register_next_step_handler(msg, collect_password_step)
-        return
-    if message.text.strip().lower() == "🔙 القائمة الرئيسية":
-        user_id = str(message.chat.id)
-        if user_id in pending_accounts:
-            del pending_accounts[user_id]
-        bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id, include_create=True))
         return
     
     user_id = str(message.chat.id)
     password = message.text.strip()
     
     if user_id not in pending_accounts:
-        pending_accounts[user_id] = {"username": None, "password": password, "raw_from_user": None}
+        pending_accounts[user_id] = {"username": None, "password": password}
     else:
         pending_accounts[user_id]["password"] = password
     
-    raw_text = f"Username: {pending_accounts[user_id].get('username', '')}\nPassword: {password}"
-    pending_accounts[user_id]["raw_from_user"] = raw_text
+    raw_text = f"اسم المستخدم: {pending_accounts[user_id].get('username', '')}\nكلمة السر: {password}"
     
     bot.send_message(
         ADMIN_ID,
@@ -168,6 +178,7 @@ def deposit_start(call):
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
     except:
         pass
+    
     user_id = str(call.message.chat.id)
     data = load_data()
     if user_id not in data["user_accounts"]:
@@ -178,7 +189,7 @@ def deposit_start(call):
     bot.register_next_step_handler(msg, deposit_amount_step)
 
 def deposit_amount_step(message):
-    if message.text and message.text.strip().lower() == "🔙 القائمة الرئيسية":
+    if is_back_command(message.text):
         bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
         return
     
@@ -213,7 +224,7 @@ def deposit_method_selected(call):
     bot.register_next_step_handler(msg, lambda m: handle_deposit_photo(m, amount, method_name))
 
 def handle_deposit_photo(message, amount, method_name):
-    if message.text and message.text.strip().lower() == "🔙 القائمة الرئيسية":
+    if is_back_command(message.text):
         bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
         return
 
@@ -226,16 +237,17 @@ def handle_deposit_photo(message, amount, method_name):
     user_id = str(message.chat.id)
     pending_deposits[user_id] = {"amount": amount, "method": method_name, "file_id": file_id}
 
-    # احصل على اسم المستخدم من البيانات
-data = load_data()
-username = data["user_accounts"].get(user_id, {}).get("username", "غير معروف")
+    # جلب اسم المستخدم للإشعار
+    data = load_data()
+    username = data["user_accounts"].get(user_id, {}).get("username", "غير معروف")
 
-bot.send_photo(
-    ADMIN_ID,
-    file_id,
-    caption=f"💳 طلب شحن جديد:\n👤 المستخدم: {user_id}\n👤 اسم الحساب: {username}\n💰 المبلغ: {amount}\n💼 الطريقة: {method_name}",
-    reply_markup=admin_controls(user_id)
-)    bot.send_message(message.chat.id, "📩 تم إرسال طلب الشحن للإدارة، يرجى الانتظار.", reply_markup=main_menu(message.chat.id))
+    bot.send_photo(
+        ADMIN_ID,
+        file_id,
+        caption=f"💳 طلب شحن جديد:\n👤 المستخدم: {user_id}\n👤 اسم الحساب: {username}\n💰 المبلغ: {amount}\n💼 الطريقة: {method_name}",
+        reply_markup=admin_controls(user_id)
+    )
+    bot.send_message(message.chat.id, "📩 تم إرسال طلب الشحن للإدارة، يرجى الانتظار.", reply_markup=main_menu(message.chat.id))
 
 # ====== سحب الحساب ======
 @bot.callback_query_handler(func=lambda call: call.data == "withdraw")
@@ -244,6 +256,7 @@ def withdraw_start(call):
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
     except:
         pass
+    
     user_id = str(call.message.chat.id)
     data = load_data()
     if user_id not in data["user_accounts"]:
@@ -254,7 +267,7 @@ def withdraw_start(call):
     bot.register_next_step_handler(msg, withdraw_amount_step)
 
 def withdraw_amount_step(message):
-    if message.text and message.text.strip().lower() == "🔙 القائمة الرئيسية":
+    if is_back_command(message.text):
         bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
         return
     
@@ -288,7 +301,7 @@ def withdraw_method_selected(call):
     bot.register_next_step_handler(msg, lambda m: confirm_withdraw_wallet(m, amount, method_name))
 
 def confirm_withdraw_wallet(message, amount, method_name):
-    if message.text and message.text.strip().lower() == "🔙 القائمة الرئيسية":
+    if is_back_command(message.text):
         bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
         return
 
@@ -296,15 +309,15 @@ def confirm_withdraw_wallet(message, amount, method_name):
     user_id = str(message.chat.id)
     pending_withdraws[user_id] = {"amount": amount, "method": method_name, "wallet": wallet}
 
-    # احصل على اسم المستخدم من البيانات
-data = load_data()
-username = data["user_accounts"].get(user_id, {}).get("username", "غير معروف")
+    # جلب اسم المستخدم للإشعار
+    data = load_data()
+    username = data["user_accounts"].get(user_id, {}).get("username", "غير معروف")
 
-bot.send_message(
-    ADMIN_ID,
-    f"💸 طلب سحب جديد:\n👤 المستخدم: {user_id}\n👤 اسم الحساب: {username}\n💰 المبلغ: {amount}\n💼 الطريقة: {method_name}\n📥 المحفظة: {wallet}",
-    reply_markup=admin_controls(user_id)
-)
+    bot.send_message(
+        ADMIN_ID,
+        f"💸 طلب سحب جديد:\n👤 المستخدم: {user_id}\n👤 اسم الحساب: {username}\n💰 المبلغ: {amount}\n💼 الطريقة: {method_name}\n📥 المحفظة: {wallet}",
+        reply_markup=admin_controls(user_id)
+    )
     bot.send_message(message.chat.id, "📩 تم إرسال طلب السحب للإدارة، يرجى الانتظار.", reply_markup=main_menu(message.chat.id))
 
 # ====== حذف الحساب ======
@@ -314,6 +327,7 @@ def delete_account(call):
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
     except:
         pass
+    
     user_id = str(call.message.chat.id)
     data = load_data()
     if user_id not in data["user_accounts"]:
@@ -321,9 +335,9 @@ def delete_account(call):
         return
     
     pending_deletes[user_id] = {"account": data["user_accounts"][user_id]}
-    data = load_data()
-username = data["user_accounts"].get(user_id, {}).get("username", "غير معروف")
-bot.send_message(ADMIN_ID, f"🗑️ طلب حذف الحساب:\n👤 المستخدم: {user_id}\n👤 اسم الحساب: {username}", reply_markup=admin_controls(user_id))
+    
+    username = data["user_accounts"][user_id].get("username", "غير معروف")
+    bot.send_message(ADMIN_ID, f"🗑️ طلب حذف الحساب:\n👤 المستخدم: {user_id}\n👤 اسم الحساب: {username}", reply_markup=admin_controls(user_id))
     bot.send_message(user_id, "📩 تم إرسال طلب حذف الحساب للإدارة، يرجى الانتظار.", reply_markup=main_menu(user_id))
 
 # ====== الدعم ======
@@ -333,11 +347,12 @@ def support_handler(call):
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
     except:
         pass
+    
     msg = bot.send_message(call.message.chat.id, "📩 اكتب رسالتك للدعم:", reply_markup=back_to_menu())
     bot.register_next_step_handler(msg, send_support_message)
 
 def send_support_message(message):
-    if message.text and message.text.strip().lower() == "🔙 القائمة الرئيسية":
+    if is_back_command(message.text):
         bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
         return
     
@@ -357,7 +372,7 @@ def admin_action(call):
         if user_id in pending_accounts:
             msg = bot.send_message(
                 ADMIN_ID,
-                f"🆕 ارسل بيانات الحساب للمستخدم {user_id} بصيغة:\nUsername: اسم\nPassword: كلمة\n\nأو اكتب ASIS لاستخدام بيانات المستخدم المرسلة مسبقاً."
+                f"🆕 ارسل بيانات الحساب النهائية للمستخدم {user_id}:\n(يمكنك إرسال أي نص - لن يتم التحقق من الصيغة)"
             )
             bot.register_next_step_handler(msg, lambda m: admin_confirm_account_data(m, user_id))
             return
@@ -421,37 +436,23 @@ def admin_action(call):
 def admin_confirm_account_data(message, user_id):
     text = (message.text or "").strip()
     
-    if text.upper() == "ASIS":
-        if user_id not in pending_accounts:
-            bot.send_message(ADMIN_ID, "⚠️ لا يوجد بيانات مستخدم محفوظة لاستخدامها.")
-            return
-        info = pending_accounts[user_id]
-        username = info.get("username")
-        password = info.get("password")
-    else:
-        lines = text.split("\n")
-        username_line = next((l for l in lines if l.strip().startswith("Username:")), None)
-        password_line = next((l for l in lines if l.strip().startswith("Password:")), None)
-        
-        if not username_line:
-            bot.send_message(ADMIN_ID, "⚠️ لم أجد سطر Username:. أعد الإرسال بصيغة:\nUsername: اسم\nPassword: كلمة (أو اكتب ASIS).")
-            bot.register_next_step_handler(bot.send_message(ADMIN_ID, "أعد إرسال بيانات الحساب:"), lambda m: admin_confirm_account_data(m, user_id))
-            return
-        
-        username = username_line.split(":",1)[1].strip()
-        password = password_line.split(":",1)[1].strip() if password_line else "********"
-
+    if not text:
+        bot.send_message(ADMIN_ID, "❌ لم يتم إرسال أي بيانات. أعد المحاولة.")
+        return
+    
+    # استخدام النص كما هو بدون تحقق من الصيغة
     data = load_data()
-    data["user_accounts"][user_id] = {"username": username, "password": password}
+    data["user_accounts"][user_id] = {"username": text, "password": "سيتم إرسالها للمستخدم"}
     save_data(data)
 
     try:
-        bot.send_message(int(user_id), f"✅ تم إنشاء حسابك بنجاح!\nUsername: {username}\nPassword: {password}", reply_markup=main_menu(int(user_id)))
+        bot.send_message(int(user_id), f"✅ تم إنشاء حسابك بنجاح!\n{text}", reply_markup=main_menu(int(user_id)))
     except:
         pass
 
-    bot.send_message(ADMIN_ID, f"✅ تم حفظ الحساب للمستخدم {user_id}:\nUsername: {username}\nPassword: {password}")
+    bot.send_message(ADMIN_ID, f"✅ تم حفظ الحساب للمستخدم {user_id}:\n{text}")
 
+    # تنظيف الطلبات المؤقتة
     pending_accounts.pop(user_id, None)
     pending_deposits.pop(user_id, None)
     pending_withdraws.pop(user_id, None)
