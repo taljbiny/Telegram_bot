@@ -368,10 +368,74 @@ def send_support_message(message):
 
 # ====== لوحة تحكم الإدمن (callbacks) ======
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_"))
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_"))
 def admin_action(call):
-    parts = call.data.split("_")
-    action = parts[1]      # accept / reject / manual
-    user_id = parts[2]
+    data = call.data.split("_")
+    action = data[1]
+    user_id = data[2]
+
+    # ====== قبول ======
+    if action == "accept":
+        # 🟢 طلب إنشاء حساب جديد
+        if user_id in pending_accounts:
+            msg = bot.send_message(
+                ADMIN_ID,
+                f"🆕 ارسل بيانات الحساب للمستخدم {user_id} بصيغة:\nUsername: اسم\nPassword: كلمة\n\nأو اكتب ASIS لاستخدام بيانات المستخدم المرسلة مسبقاً."
+            )
+            bot.register_next_step_handler(msg, lambda m: admin_confirm_account_data(m, user_id))
+            return
+
+        # 🗑️ طلب حذف حساب
+        if user_id in pending_deletes:
+            data_file = load_data()
+            if user_id in data_file["user_accounts"]:
+                del data_file["user_accounts"][user_id]
+                save_data(data_file)
+            pending_deletes.pop(user_id, None)
+            try:
+                bot.send_message(int(user_id), "✅ تم حذف حسابك بنجاح، يمكنك الآن إنشاء حساب جديد.", reply_markup=main_menu(int(user_id), include_create=True))
+            except:
+                pass
+            bot.send_message(ADMIN_ID, f"🗑️ تم حذف حساب المستخدم {user_id} بنجاح.")
+            return
+
+        # 💳 طلب شحن
+        if user_id in pending_deposits:
+            dep = pending_deposits.pop(user_id)
+            try:
+                bot.send_message(int(user_id), f"✅ تم قبول طلب الشحن.\n💰 سيتم إضافة الرصيد إلى حسابك خلال 5 دقائق كحد أقصى.", reply_markup=main_menu(int(user_id)))
+            except:
+                pass
+            bot.send_message(ADMIN_ID, f"💰 تم قبول شحن المستخدم {user_id} ({dep['amount']} عبر {dep['method']}).")
+            return
+
+        # 💸 طلب سحب
+        if user_id in pending_withdraws:
+            wd = pending_withdraws.pop(user_id)
+            try:
+                bot.send_message(int(user_id), f"✅ تم قبول طلب السحب.\n💵 سيتم تحويل المبلغ إلى محفظتك في أقرب وقت ممكن.", reply_markup=main_menu(int(user_id)))
+            except:
+                pass
+            bot.send_message(ADMIN_ID, f"💸 تم قبول سحب المستخدم {user_id} ({wd['amount']} إلى {wd['wallet']}).")
+            return
+
+        # في حال لم يوجد نوع معروف
+        bot.send_message(ADMIN_ID, "⚠️ لم يتم التعرف على نوع الطلب لقبوله.")
+        return
+
+    # ====== رفض ======
+    elif action == "reject":
+        # حذف من جميع القوائم المحتملة
+        pending_accounts.pop(user_id, None)
+        pending_deletes.pop(user_id, None)
+        pending_deposits.pop(user_id, None)
+        pending_withdraws.pop(user_id, None)
+        try:
+            bot.send_message(int(user_id), "❌ تم رفض طلبك من قبل الإدارة.", reply_markup=main_menu(int(user_id)))
+        except:
+            pass
+        bot.send_message(ADMIN_ID, f"🚫 تم رفض طلب المستخدم {user_id}.")
+        return
 
     # زر الرد اليدوي: الإدارة تكتب رسالة تُرسل للمستخدم
     if action == "manual":
