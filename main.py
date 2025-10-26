@@ -528,7 +528,25 @@ def send_manual_reply(message, user_id):
         bot.send_message(ADMIN_ID, "✅ تم إرسال الرد للمستخدم.")
     except Exception as e:
         bot.send_message(ADMIN_ID, f"⚠️ خطأ أثناء إرسال الرسالة للمستخدم: {e}")
+# ====== إرسال رسالة جماعية لجميع المستخدمين ======
+@bot.message_handler(commands=['broadcast'])
+def broadcast_message(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    msg = bot.send_message(message.chat.id, "📝 أرسل الرسالة الجماعية التي تريد إرسالها لجميع المستخدمين:")
+    bot.register_next_step_handler(msg, send_broadcast)
 
+def send_broadcast(message):
+    data = load_data()  # يحمل بيانات المستخدمين من data.json
+    user_ids = list(data["user_accounts"].keys())
+    count = 0
+    for user_id in user_ids:
+        try:
+            bot.send_message(int(user_id), f"📢 رسالة جماعية:\n{message.text}")
+            count += 1
+        except:
+            continue
+    bot.send_message(ADMIN_ID, f"✅ تم إرسال الرسالة إلى {count} مستخدمين.")
 # ====== Webhook Flask ======
 @app.route('/' + TOKEN, methods=['POST'])
 def webhook():
