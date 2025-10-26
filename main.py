@@ -368,7 +368,6 @@ def send_support_message(message):
 
 # ====== لوحة تحكم الإدمن (callbacks) ======
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_"))
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_"))
 def admin_action(call):
     data = call.data.split("_")
     action = data[1]
@@ -437,6 +436,7 @@ def admin_action(call):
         bot.send_message(ADMIN_ID, f"🚫 تم رفض طلب المستخدم {user_id}.")
         return
 
+    
     # زر الرد اليدوي: الإدارة تكتب رسالة تُرسل للمستخدم
     if action == "manual":
         msg = bot.send_message(ADMIN_ID, f"📝 اكتب الرد اليدوي الذي تريد إرساله للمستخدم {user_id}:")
