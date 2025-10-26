@@ -13,7 +13,7 @@ SITE_LINK = "https://www.55bets.net/#/casino/"
 RENDER_URL = "https://telegram-bot-xsto.onrender.com"
 DATA_FILE = "data.json"
 MIN_AMOUNT = 25000
-
+pending_accounts = {}  # لتخزين مؤقت طلبات إنشاء الحساب {user_id: True}
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
@@ -83,15 +83,16 @@ def create_account(call):
     msg = bot.send_message(call.message.chat.id, "📝 أرسل اسم الحساب وكلمة السر بصيغة:\nUsername: اسم الحساب\nPassword: كلمة السر", reply_markup=back_to_menu())
     bot.register_next_step_handler(msg, process_account_info)
 
-def process_account_info(message):
+def def process_account_info(message):
     if message.text.lower() == "🔙 القائمة الرئيسية":
         bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
         return
     user_id = str(message.chat.id)
-    # إرسال الطلب للإدمن مع نص الاسم وكلمة السر
+    # حفظ الطلب مؤقتًا
+    pending_accounts[user_id] = True
+    # إرسال نص الإنشاء للإدمن مع user_id
     bot.send_message(ADMIN_ID, f"📩 طلب إنشاء حساب جديد:\n👤 المستخدم: {user_id}\n{message.text}", reply_markup=admin_controls(user_id))
     bot.send_message(message.chat.id, "⏳ تم إرسال طلب إنشاء الحساب للإدارة، يرجى الانتظار.", reply_markup=main_menu(user_id))
-
 # ====== شحن الحساب ======
 @bot.callback_query_handler(func=lambda call: call.data.startswith("deposit"))
 def deposit_handler(call):
@@ -194,15 +195,25 @@ def admin_action(call):
         msg = bot.send_message(ADMIN_ID, f"📝 اكتب الرد للمستخدم {user_id}:")
         bot.register_next_step_handler(msg, lambda m: send_manual_reply(m, user_id))
     elif action == "accept":
-        msg_text = call.message.text
-        # حفظ الحساب إذا كان إنشاء
-        if "طلب إنشاء حساب جديد" in msg_text:
+    # فقط إذا كان هناك طلب إنشاء حساب
+    if user_id in pending_accounts:
+        lines = call.message.text.split("\n")
+        username_line = next((l for l in lines if l.startswith("Username:")), None)
+        password_line = next((l for l in lines if l.startswith("Password:")), None)
+        if username_line and password_line:
+            username = username_line.split(":",1)[1].strip()
+            password = password_line.split(":",1)[1].strip()
             data = load_data()
-            # الافتراض: الإدمن يرسل في الرد رسالة بصيغة Username/Password منفصلة
-            bot.send_message(ADMIN_ID, f"📝 الرجاء الرد باسم الحساب وكلمة السر بصيغة:\nUsername: اسم الحساب\nPassword: كلمة السر")
+            data["user_accounts"][user_id] = {"username": username, "password": password}
+            save_data(data)
+            bot.send_message(int(user_id), f"✅ تم إنشاء حسابك!\nUsername: {username}\nPassword: {password}", reply_markup=main_menu(user_id))
+            bot.send_message(ADMIN_ID, f"✅ تم حفظ الحساب للمستخدم {user_id}.")
+            # حذف الطلب من المؤقت
+            del pending_accounts[user_id]
         else:
-            bot.send_message(int(user_id), "✅ تم قبول طلبك.", reply_markup=main_menu(user_id))
-    elif action == "reject":
+            bot.send_message(ADMIN_ID, "⚠️ صيغة الاسم وكلمة السر غير صحيحة. استخدم:\nUsername: اسم\nPassword: كلمة")
+    else:
+        bot.send_message(int(user_id), "✅ تم قبول طلبك.", reply_markup=main_menu(user_id))    elif action == "reject":
         bot.send_message(int(user_id), "❌ تم رفض طلبك.", reply_markup=main_menu(user_id))
 
 def send_manual_reply(message, user_id):
