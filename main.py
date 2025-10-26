@@ -210,6 +210,32 @@ def deposit_method_selected(call):
     bot.register_next_step_handler(msg, lambda m: handle_deposit_photo(m, amount, method_name))
 
 def handle_deposit_photo(message, amount, method_name):
+    # 🔙 الرجوع للقائمة
+    if message.text and message.text.strip().lower() == "🔙 القائمة الرئيسية":
+        bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
+        return
+
+    # 📸 تأكيد وجود صورة
+    if not message.photo:
+        msg = bot.send_message(message.chat.id, "❌ الرجاء إرسال صورة تأكيد الدفع فقط.", reply_markup=back_to_menu())
+        bot.register_next_step_handler(msg, lambda m: handle_deposit_photo(m, amount, method_name))
+        return
+
+    # 🪪 حفظ تفاصيل العملية
+    file_id = message.photo[-1].file_id
+    user_id = str(message.chat.id)
+    pending_deposits[user_id] = {"amount": amount, "method": method_name, "file_id": file_id}
+
+    # 📤 إرسال إلى الإدارة
+    bot.send_photo(
+        ADMIN_ID,
+        file_id,
+        caption=f"💳 طلب شحن جديد:\n👤 المستخدم: {user_id}\n💰 المبلغ: {amount}\n💼 الطريقة: {method_name}",
+        reply_markup=admin_controls(user_id)
+    )
+
+    # ✅ تأكيد للمستخدم
+    bot.send_message(message.chat.id, "📩 تم إرسال طلب الشحن للإدارة، يرجى الانتظار.", reply_markup=main_menu(message.chat.id))
     if message.text and message.text.strip().lower() == "🔙 القائمة الرئيسية":
         bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
         return
@@ -274,6 +300,25 @@ def withdraw_method_selected(call):
     bot.register_next_step_handler(msg, lambda m: confirm_withdraw_wallet(m, amount, method_name))
 
 def confirm_withdraw_wallet(message, amount, method_name):
+    # 🔙 الرجوع
+    if message.text and message.text.strip().lower() == "🔙 القائمة الرئيسية":
+        bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
+        return
+
+    wallet = message.text.strip()
+    user_id = str(message.chat.id)
+
+    pending_withdraws[user_id] = {"amount": amount, "method": method_name, "wallet": wallet}
+
+    # 📤 إرسال الطلب للإدارة
+    bot.send_message(
+        ADMIN_ID,
+        f"💸 طلب سحب جديد:\n👤 المستخدم: {user_id}\n💰 المبلغ: {amount}\n💼 الطريقة: {method_name}\n📥 المحفظة: {wallet}",
+        reply_markup=admin_controls(user_id)
+    )
+
+    # ✅ تأكيد للمستخدم
+    bot.send_message(message.chat.id, "📩 تم إرسال طلب السحب للإدارة، يرجى الانتظار.", reply_markup=main_menu(message.chat.id))
     if message.text and message.text.strip().lower() == "🔙 القائمة الرئيسية":
         bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
         return
@@ -336,12 +381,25 @@ def admin_action(call):
 
     # زر القبول: نطلب من الادمن ارسال بيانات الحساب النهائية أو "ASIS" لاستخدام بيانات المستخدم
     if action == "accept":
-        # تحقق إن هناك طلب إنشاء (إن لم يكن، نقبل أي طلب آخر كالـ deposit/withdraw/delete حسب الحالة)
-        # الاهم: نطلب من الادمن ارسال Username/Password أو كتابة ASIS
-        msg = bot.send_message(ADMIN_ID,
-            f"🆕 ارسل بيانات الحساب للمستخدم {user_id} بصيغة:\nUsername: اسم\nPassword: كلمة\n\nأو اكتب ASIS لاستخدام بيانات المستخدم المرسلة مسبقاً.")
-        bot.register_next_step_handler(msg, lambda m: admin_confirm_account_data(m, user_id))
+    # ✅ إذا كان طلب حذف حساب
+    if user_id in pending_deletes:
+        data = load_data()
+        if user_id in data["user_accounts"]:
+            del data["user_accounts"][user_id]
+            save_data(data)
+        pending_deletes.pop(user_id, None)
+        try:
+            bot.send_message(int(user_id), "✅ تم حذف حسابك بنجاح، يمكنك الآن إنشاء حساب جديد.", reply_markup=main_menu(int(user_id), include_create=True))
+        except:
+            pass
+        bot.send_message(ADMIN_ID, f"🗑️ تم حذف حساب المستخدم {user_id} بنجاح.")
         return
+
+    # ✅ إذا كان طلب إنشاء حساب
+    msg = bot.send_message(ADMIN_ID,
+        f"🆕 ارسل بيانات الحساب للمستخدم {user_id} بصيغة:\nUsername: اسم\nPassword: كلمة\n\nأو اكتب ASIS لاستخدام بيانات المستخدم المرسلة مسبقاً.")
+    bot.register_next_step_handler(msg, lambda m: admin_confirm_account_data(m, user_id))
+    return
 
     # زر الرفض: نرسل رفض للمستخدم وننظف أي طلب مؤقت
     if action == "reject":
