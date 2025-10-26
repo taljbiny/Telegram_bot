@@ -79,9 +79,18 @@ def create_account(call):
     if user_id in data["user_accounts"]:
         bot.answer_callback_query(call.id, "❌ لديك حساب مسبق، احذف الحساب القديم أولاً.")
         return
-    # إرسال طلب إنشاء حساب للإدمن مباشرة
-    bot.send_message(ADMIN_ID, f"📩 طلب إنشاء حساب جديد:\n👤 المستخدم: {user_id}", reply_markup=admin_controls(user_id))
-    bot.send_message(call.message.chat.id, "⏳ تم إرسال طلب إنشاء الحساب للإدارة، يرجى الانتظار.", reply_markup=main_menu(user_id))
+    # نطلب من المستخدم الاسم وكلمة السر
+    msg = bot.send_message(call.message.chat.id, "📝 أرسل اسم الحساب وكلمة السر بصيغة:\nUsername: اسم الحساب\nPassword: كلمة السر", reply_markup=back_to_menu())
+    bot.register_next_step_handler(msg, process_account_info)
+
+def process_account_info(message):
+    if message.text.lower() == "🔙 القائمة الرئيسية":
+        bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
+        return
+    user_id = str(message.chat.id)
+    # إرسال الطلب للإدمن مع نص الاسم وكلمة السر
+    bot.send_message(ADMIN_ID, f"📩 طلب إنشاء حساب جديد:\n👤 المستخدم: {user_id}\n{message.text}", reply_markup=admin_controls(user_id))
+    bot.send_message(message.chat.id, "⏳ تم إرسال طلب إنشاء الحساب للإدارة، يرجى الانتظار.", reply_markup=main_menu(user_id))
 
 # ====== شحن الحساب ======
 @bot.callback_query_handler(func=lambda call: call.data.startswith("deposit"))
