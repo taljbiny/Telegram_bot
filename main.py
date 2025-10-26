@@ -1,315 +1,202 @@
-# main.py
-"""
-Bot Telegram webhook version (Flask) - final
-Usage:
-  - ضع توكن البوت الخاص بك في المتغير TOKEN أدناه.
-  - اضف متغير بيئة WEBHOOK_URL في إعدادات Render (أو استخدم رابط HTTPS العام)
-    مثال WEBHOOK_URL = "https://your-app.onrender.com"
-  - عند التشغيل، سيقوم البوت بتسجيل webhook على: <WEBHOOK_URL>/<TOKEN>
-  - Install: pip install -r requirements.txt
-  - requirements.txt must include: pyTelegramBotAPI, Flask, gunicorn
-"""
-
-import os
-import re
-from flask import Flask, request, abort
 import telebot
 from telebot import types
+from flask import Flask, request
 
-# ========== إعدادات (ضع التوكن هنا) ==========
-TOKEN = "8317743306:AAFGH1Acxb6fIwZ0o0T2RvNjezQFW8KWcw8"   # <-- **ضع هنا توكن البوت** (مثال: 8317...:AA...)
-ADMIN_ID = 7625893170               # <-- رقم الأدمن (عدلي إن بدك)
-SERIATEL_CASH_CODE = "82492253"     # كود سيرياتيل كما طلبت
-SHAM_CASH_CODE = "131efe4fbccd83a811282761222eee69"  # كود شام كاش
+# ====== الإعدادات ======
+TOKEN = "8317743306:AAFGH1Acxb6fIwZ0o0T2RvNjezQFW8KWcw8"
+ADMIN_ID = 7625893170
+SYRIATEL_CODE = "82492253"
+SHAM_CODE = "131efe4fbccd83a811282761222eee69"
+RENDER_URL = "https://www.55bets.net/#/casino/"
 
-# اقرأ رابط الويب هوك من متغير بيئة (إلزامي على Render)
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")  # مثال: https://my-app.onrender.com
-if not WEBHOOK_URL:
-    # نسمح بتشغيل محلي لعمل اختبار إذا رغبت (لكن webhook يحتاج URL عام)
-    print("Warning: WEBHOOK_URL not set. Webhook won't be registered. Set WEBHOOK_URL env var on Render.")
-    # لا نقوم بعمل abort لأن ممكن تريد تشغيل محليًا (لكن webhook لن يعمل)
-
-# =================================================
-bot = telebot.TeleBot(TOKEN, threaded=True)
+bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# تخزين مؤقت بالذاكرة (استبدله بقاعدة بيانات في الإنتاج)
-user_states = {}    # user_id -> state dict
-user_accounts = {}  # user_id -> account_name
+# ====== تخزين بيانات المستخدم مؤقت ======
+user_accounts = {}
+pending_deletes = {}
+pending_deposits = {}
+pending_withdraws = {}
 
-# ---------- أدوات مساعدة ----------
-def set_state(uid, **kwargs):
-    user_states[uid] = user_states.get(uid, {})
-    user_states[uid].update(kwargs)
-
-def get_state(uid):
-    return user_states.get(uid, {})
-
-def clear_state(uid):
-    if uid in user_states:
-        del user_states[uid]
-
-def main_keyboard():
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(types.KeyboardButton("إنشاء حساب"),
-           types.KeyboardButton("إيداع"),
-           types.KeyboardButton("سحب"),
-           types.KeyboardButton("حذف الحساب"))
-    return kb
-
-# ---------- Flask route for webhook ----------
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    # Telegram will post updates here
-    if request.headers.get("content-type") == "application/json":
-        json_str = request.get_data().decode("utf-8")
-        update = telebot.types.Update.de_json(json_str)
-        bot.process_new_updates([update])
-        return "", 200
-    else:
-        abort(403)
-
-# ---------- Register /start ----------
-@bot.message_handler(commands=["start", "home"])
-def cmd_start(msg):
-    clear_state(msg.from_user.id)
-    bot.send_message(msg.chat.id, "أهلاً! اختار العملية:", reply_markup=main_keyboard())
-
-# ---------- إنشاء حساب ----------
-@bot.message_handler(func=lambda m: m.text == "إنشاء حساب")
-def create_account_start(msg):
-    if msg.from_user.id in user_accounts:
-        bot.send_message(msg.chat.id, "⚠️ لديك حساب بالفعل. إن أردت حذفه استخدم 'حذف الحساب'.", reply_markup=main_keyboard())
-        return
-    set_state(msg.from_user.id, flow="create_account", step="ask_name")
-    bot.send_message(msg.chat.id, "📝 أرسل اسم الحساب الذي تريد إنشاؤه:")
-
-@bot.message_handler(func=lambda m: get_state(m.from_user.id).get("flow") == "create_account")
-def create_account_process(msg):
-    st = get_state(msg.from_user.id)
-    if st.get("step") == "ask_name":
-        account_name = msg.text.strip()
-        user_accounts[msg.from_user.id] = account_name
-        clear_state(msg.from_user.id)
-        bot.send_message(msg.chat.id, f"✅ تم إنشاء الحساب باسم: {account_name}", reply_markup=main_keyboard())
-        bot.send_message(ADMIN_ID,
-                         f"👤 مستخدم جديد أنشأ حساباً\nUserID: {msg.from_user.id}\n"
-                         f"اسم الحساب: {account_name}\n\n"
-                         f"(رد على هذه الرسالة لإرسال رد للمستخدم)")
-        
-# ---------- إيداع ----------
-@bot.message_handler(func=lambda m: m.text == "إيداع")
-def deposit_start(msg):
-    if msg.from_user.id not in user_accounts:
-        bot.send_message(msg.chat.id, "⚠️ لا يوجد حساب. أنشئ حساب أولاً.", reply_markup=main_keyboard())
-        return
-    set_state(msg.from_user.id, flow="deposit", step="ask_amount")
-    bot.send_message(msg.chat.id, "💰 أرسل المبلغ الذي تريد إيداعه:")
-
-@bot.message_handler(func=lambda m: get_state(m.from_user.id).get("flow") == "deposit" and get_state(m.from_user.id).get("step") == "ask_amount")
-def deposit_amount(msg):
-    try:
-        amount = float(msg.text.strip())
-    except:
-        bot.send_message(msg.chat.id, "❗ الرجاء إدخال مبلغ رقمي صالح.")
-        return
-    set_state(msg.from_user.id, flow="deposit", step="ask_method", amount=amount)
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(types.KeyboardButton("سيرياتيل كاش"), types.KeyboardButton("شام كاش"))
-    bot.send_message(msg.chat.id, "اختر طريقة الدفع:", reply_markup=kb)
-
-@bot.message_handler(func=lambda m: get_state(m.from_user.id).get("flow") == "deposit" and get_state(m.from_user.id).get("step") == "ask_method")
-def deposit_method(msg):
-    method = msg.text.strip()
-    if method not in ["سيرياتيل كاش", "شام كاش"]:
-        bot.send_message(msg.chat.id, "❗ اختر أحد الأزرار المتاحة.")
-        return
-    set_state(msg.from_user.id, flow="deposit", step="ask_code", method=method)
-    code = SERIATEL_CASH_CODE if method == "سيرياتيل كاش" else SHAM_CASH_CODE
-    bot.send_message(msg.chat.id,
-                     f"📲 حول المبلغ ({get_state(msg.from_user.id)['amount']}) إلى {method}\n"
-                     f"كود المحفظة: {code}\n\n"
-                     f"بعد التحويل أرسل رقم الشحن / كود العملية هنا:")
-
-@bot.message_handler(func=lambda m: get_state(m.from_user.id).get("flow") == "deposit" and get_state(m.from_user.id).get("step") == "ask_code")
-def deposit_code(msg):
-    st = get_state(msg.from_user.id)
-    account = user_accounts.get(msg.from_user.id, "—")
-    code_sent = msg.text.strip()
-    admin_text = (
-        f"📥 طلب إيداع جديد\n"
-        f"👤 المستخدم: {msg.from_user.username or msg.from_user.full_name}\n"
-        f"🆔 UserID: {msg.from_user.id}\n"
-        f"📛 الحساب: {account}\n"
-        f"💰 المبلغ: {st.get('amount')}\n"
-        f"💳 الطريقة: {st.get('method')}\n"
-        f"🔢 رقم الشحن/الكود المرسل: {code_sent}\n\n"
-        f"رد على هذه الرسالة لإرسال رد للمستخدم."
+# ====== واجهة البداية + ترحيب + رابط الموقع ======
+@bot.message_handler(commands=['start'])
+def start(message):
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("🆕 إنشاء حساب", callback_data="create_account"),
+        types.InlineKeyboardButton("💰 إيداع", callback_data="deposit"),
+        types.InlineKeyboardButton("💸 سحب", callback_data="withdraw"),
+        types.InlineKeyboardButton("🗑️ حذف الحساب", callback_data="delete_account")
     )
-    bot.send_message(ADMIN_ID, admin_text)
-    bot.send_message(msg.chat.id, "✅ تم إرسال طلب الإيداع للإدارة للمراجعة.", reply_markup=main_keyboard())
-    clear_state(msg.from_user.id)
-
-# ---------- سحب ----------
-@bot.message_handler(func=lambda m: m.text == "سحب")
-def withdraw_start(msg):
-    if msg.from_user.id not in user_accounts:
-        bot.send_message(msg.chat.id, "⚠️ لا يوجد حساب لديك. أنشئ حساب أولاً.", reply_markup=main_keyboard())
-        return
-    set_state(msg.from_user.id, flow="withdraw", step="ask_amount")
-    bot.send_message(msg.chat.id, "💵 أرسل المبلغ الذي تريد سحبه:")
-
-@bot.message_handler(func=lambda m: get_state(m.from_user.id).get("flow") == "withdraw" and get_state(m.from_user.id).get("step") == "ask_amount")
-def withdraw_amount(msg):
-    try:
-        amount = float(msg.text.strip())
-    except:
-        bot.send_message(msg.chat.id, "❗ الرجاء إدخال مبلغ رقمي صالح.")
-        return
-    set_state(msg.from_user.id, flow="withdraw", step="ask_wallet", amount=amount)
-    bot.send_message(msg.chat.id, "📲 أرسل رقم/كود المحفظة التي تريد استلام المبلغ عليها:")
-
-@bot.message_handler(func=lambda m: get_state(m.from_user.id).get("flow") == "withdraw" and get_state(m.from_user.id).get("step") == "ask_wallet")
-def withdraw_wallet(msg):
-    st = get_state(msg.from_user.id)
-    account = user_accounts.get(msg.from_user.id, "—")
-    admin_text = (
-        f"📤 طلب سحب\n"
-        f"👤 المستخدم: {msg.from_user.username or msg.from_user.full_name}\n"
-        f"🆔 UserID: {msg.from_user.id}\n"
-        f"📛 الحساب: {account}\n"
-        f"💰 المبلغ: {st.get('amount')}\n"
-        f"🔢 تفاصيل المحفظة: {msg.text.strip()}\n\n"
-        f"رد على هذه الرسالة لإرسال رد للمستخدم."
+    welcome_text = (
+        "👋 أهلاً بك في نظام 55BETS!\n\n"
+        f"📌 الموقع الرسمي: [55BETS]({RENDER_URL})\n"
+        "اختر إحدى الخيارات التالية للبدء:"
     )
-    bot.send_message(ADMIN_ID, admin_text)
-    bot.send_message(msg.chat.id, "✅ تم إرسال طلب السحب للإدارة.", reply_markup=main_keyboard())
-    clear_state(msg.from_user.id)
+    bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode="Markdown")
 
-# ---------- حذف الحساب ----------
-@bot.message_handler(func=lambda m: m.text == "حذف الحساب")
-def delete_account_request(msg):
-    if msg.from_user.id not in user_accounts:
-        bot.send_message(msg.chat.id, "❗ لا يوجد حساب لحذفه.", reply_markup=main_keyboard())
-        return
-    set_state(msg.from_user.id, flow="delete", step="confirm")
-    bot.send_message(msg.chat.id, "⚠️ هل أنت متأكد من حذف الحساب؟ أرسل: نعم أو لا")
+# ====== إنشاء حساب ======
+@bot.callback_query_handler(func=lambda call: call.data == "create_account")
+def create_account(call):
+    bot.send_message(call.message.chat.id, "📝 أرسل اسم الحساب الذي تريد تسجيله:")
+    bot.register_next_step_handler(call.message, process_account_name)
 
-@bot.message_handler(func=lambda m: get_state(m.from_user.id).get("flow") == "delete" and get_state(m.from_user.id).get("step") == "confirm")
-def confirm_delete(msg):
-    if msg.text.strip().lower() == "نعم":
-        account = user_accounts.get(msg.from_user.id, "—")
-        bot.send_message(msg.chat.id, "📨 تم إرسال طلب حذف الحساب للإدارة، بانتظار القرار.")
-        bot.send_message(ADMIN_ID,
-                         f"🗑️ طلب حذف حساب\n"
-                         f"👤 المستخدم: {msg.from_user.username or msg.from_user.full_name}\n"
-                         f"🆔 UserID: {msg.from_user.id}\n"
-                         f"📛 الحساب: {account}\n\n"
-                         f"رد بـ 'موافقة' أو 'رفض' على هذه الرسالة.")
-        clear_state(msg.from_user.id)
+def process_account_name(message):
+    user_accounts[message.chat.id] = message.text
+    bot.send_message(message.chat.id, f"✅ تم إرسال طلب إنشاء الحساب.\nفي انتظار موافقة الأدمن.")
+    bot.send_message(ADMIN_ID, f"📩 طلب إنشاء حساب جديد:\n👤 المستخدم: {message.chat.id}\n📛 الاسم: {message.text}")
+
+# ====== إيداع ======
+@bot.callback_query_handler(func=lambda call: call.data == "deposit")
+def deposit(call):
+    bot.send_message(call.message.chat.id, "💳 أرسل اسم الحساب الذي تريد الإيداع له:")
+    bot.register_next_step_handler(call.message, process_deposit_account)
+
+def process_deposit_account(message):
+    account = message.text
+    bot.send_message(message.chat.id, "💰 أرسل المبلغ الذي تريد إيداعه:")
+    bot.register_next_step_handler(message, lambda m: process_deposit_amount(m, account))
+
+def process_deposit_amount(message, account):
+    amount = message.text
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("سيرياتيل كاش", callback_data=f"deposit_syriatel_{account}_{amount}"),
+        types.InlineKeyboardButton("شام كاش", callback_data=f"deposit_sham_{account}_{amount}")
+    )
+    bot.send_message(message.chat.id, "اختر طريقة الدفع:", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("deposit_syriatel_") or call.data.startswith("deposit_sham_"))
+def deposit_method(call):
+    parts = call.data.split("_")
+    method = parts[1]
+    account = parts[2]
+    amount = parts[3]
+
+    if method == "syriatel":
+        code = SYRIATEL_CODE
+        method_name = "سيرياتيل كاش"
     else:
-        bot.send_message(msg.chat.id, "❌ تم إلغاء طلب الحذف.", reply_markup=main_keyboard())
-        clear_state(msg.from_user.id)
+        code = SHAM_CODE
+        method_name = "شام كاش"
 
-# ---------- استقبال صور/ملفات إثبات (عمليات الإيداع لو أردت) ----------
-@bot.message_handler(content_types=['photo', 'document'])
-def handle_media(msg):
-    # إذا المستخدم كان بمرحلة ما نريد التعامل معه كـ proof للإيداع:
-    st = get_state(msg.from_user.id)
-    if st.get("flow") == "deposit" and st.get("step") in ("await_proof", "ask_code"):
-        # في هذه النسخة نعتبر أن المستخدم أرسل إثباتًا بدلاً من كود نصي
-        account = user_accounts.get(msg.from_user.id, "—")
-        amount = st.get("amount")
-        method = st.get("method")
-        admin_caption = (
-            f"📥 إثبات إيداع وصل\n"
-            f"👤 المستخدم: {msg.from_user.username or msg.from_user.full_name}\n"
-            f"🆔 UserID: {msg.from_user.id}\n"
-            f"📛 الحساب: {account}\n"
-            f"💰 المبلغ: {amount}\n"
-            f"💳 الطريقة: {method}\n\n"
-            f"رد على هذه الرسالة لإرسال رد للمستخدم."
-        )
-        # أرسل النص ثم الملف للأدمن
-        bot.send_message(ADMIN_ID, admin_caption)
-        try:
-            if msg.content_type == 'photo':
-                file_id = msg.photo[-1].file_id
-                bot.send_photo(ADMIN_ID, file_id, caption="إثبات من المستخدم")
-            else:
-                bot.send_document(ADMIN_ID, msg.document.file_id, caption=f"إثبات من المستخدم: {msg.document.file_name}")
-            bot.send_message(msg.chat.id, "✅ تم إرسال الإثبات للإدارة للمراجعة.", reply_markup=main_keyboard())
-        except Exception as e:
-            bot.send_message(msg.chat.id, "⚠️ فشل إرسال الإثبات. حاول لاحقًا.")
-        finally:
-            clear_state(msg.from_user.id)
+    bot.send_message(call.message.chat.id, f"📱 كود محفظة {method_name}:\n`{code}`", parse_mode="Markdown")
+    bot.send_message(call.message.chat.id, "📸 أرسل صورة تأكيد الدفع.")
+    bot.register_next_step_handler(call.message, lambda m: confirm_deposit_image(m, account, amount, method_name))
+
+def confirm_deposit_image(message, account, amount, method_name):
+    if not message.photo:
+        bot.send_message(message.chat.id, "❌ يرجى إرسال صورة تأكيد الدفع فقط.")
         return
-    # غير ذلك: تجاهل أو رد عام
-    bot.send_message(msg.chat.id, "استخدم الأزرار لإجراء العمليات.", reply_markup=main_keyboard())
+    file_id = message.photo[-1].file_id
+    pending_deposits[message.chat.id] = {"account": account, "amount": amount, "method": method_name, "file_id": file_id}
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("✅ تأكيد الإيداع", callback_data=f"approve_deposit_{message.chat.id}"),
+        types.InlineKeyboardButton("❌ رفض الإيداع", callback_data=f"reject_deposit_{message.chat.id}")
+    )
+    bot.send_photo(ADMIN_ID, file_id, caption=f"💳 طلب إيداع جديد:\n👤 المستخدم: {message.chat.id}\n📛 الحساب: {account}\n💰 المبلغ: {amount}\n💼 الطريقة: {method_name}", reply_markup=markup)
+    bot.send_message(message.chat.id, "📩 تم إرسال طلب الإيداع للإدارة، يرجى الانتظار ريثما يتم التحقق.")
 
-# ---------- رد الأدمن (Reply على رسالة الطلب في محادثة البوت مع الأدمن) ----------
-@bot.message_handler(func=lambda m: m.chat.id == ADMIN_ID and m.reply_to_message is not None)
-def admin_reply_handler(msg):
-    original = msg.reply_to_message.text or ""
-    match = re.search(r"UserID:\s*(\d+)", original)
-    if not match:
-        bot.send_message(ADMIN_ID, "⚠️ لم أتمكن من إيجاد UserID في الرسالة الأصلية. تأكد أنك ترد على رسالة الطلب الصحيحة.")
-        return
-    user_id = int(match.group(1))
+# ====== سحب ======
+@bot.callback_query_handler(func=lambda call: call.data == "withdraw")
+def withdraw(call):
+    bot.send_message(call.message.chat.id, "💸 أرسل المبلغ الذي تريد سحبه:")
+    bot.register_next_step_handler(call.message, process_withdraw_amount)
 
-    # عمليات خاصة بطلب حذف الحساب
-    if "طلب حذف حساب" in original or "طلب حذف الحساب" in original or "🗑️ طلب حذف" in original:
-        txt = msg.text.strip() if msg.text else ""
-        if txt == "موافقة":
-            if user_id in user_accounts:
-                del user_accounts[user_id]
-            bot.send_message(user_id, "✅ تمت الموافقة على حذف حسابك. يمكنك الآن إنشاء حساب جديد.", reply_markup=main_keyboard())
-            bot.send_message(ADMIN_ID, "✅ تم حذف الحساب.")
-            return
-        elif txt == "رفض":
-            bot.send_message(user_id, "❌ تم رفض طلب حذف حسابك من قبل الإدارة.", reply_markup=main_keyboard())
-            bot.send_message(ADMIN_ID, "❌ تم رفض طلب الحذف.")
-            return
+def process_withdraw_amount(message):
+    amount = message.text
+    bot.send_message(message.chat.id, "📱 أرسل رقم محفظتك (سيرياتيل كاش):")
+    bot.register_next_step_handler(message, lambda m: process_withdraw_wallet(m, amount))
 
-    # إرسال الرد العام للمستخدم (نص/صورة/ملف)
-    try:
-        if msg.content_type == "text":
-            bot.send_message(user_id, f"💬 رد من الإدارة:\n{msg.text}")
-        elif msg.content_type == "photo":
-            bot.send_photo(user_id, msg.photo[-1].file_id, caption=f"رد من الإدارة:\n{msg.caption or ''}")
-        elif msg.content_type == "document":
-            bot.send_document(user_id, msg.document.file_id, caption=f"رد من الإدارة:\n{msg.caption or ''}")
+def process_withdraw_wallet(message, amount):
+    wallet = message.text
+    pending_withdraws[message.chat.id] = {"amount": amount, "wallet": wallet}
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("✅ تأكيد السحب", callback_data=f"approve_withdraw_{message.chat.id}"),
+        types.InlineKeyboardButton("❌ رفض السحب", callback_data=f"reject_withdraw_{message.chat.id}")
+    )
+    bot.send_message(ADMIN_ID, f"💸 طلب سحب جديد:\n👤 المستخدم: {message.chat.id}\n💰 المبلغ: {amount}\n📱 المحفظة: {wallet}", reply_markup=markup)
+    bot.send_message(message.chat.id, "📩 تم إرسال طلب السحب للإدارة.\n⏳ طلبك قيد المراجعة.")
+
+# ====== حذف الحساب ======
+@bot.callback_query_handler(func=lambda call: call.data == "delete_account")
+def delete_account(call):
+    bot.send_message(call.message.chat.id, "⚠️ هل أنت متأكد من رغبتك بحذف حسابك؟ سيتم إرسال طلب للإدارة للموافقة.")
+    pending_deletes[call.message.chat.id] = True
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("✅ تأكيد الحذف", callback_data=f"request_delete_{call.message.chat.id}"),
+        types.InlineKeyboardButton("❌ إلغاء", callback_data="cancel_delete")
+    )
+    bot.send_message(call.message.chat.id, "اختر:", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("request_delete_"))
+def request_delete(call):
+    user_id = int(call.data.split("_")[2])
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("✅ قبول الحذف", callback_data=f"approve_delete_{user_id}"),
+        types.InlineKeyboardButton("❌ رفض الحذف", callback_data=f"reject_delete_{user_id}")
+    )
+    bot.send_message(ADMIN_ID, f"🗑️ طلب حذف حساب من المستخدم {user_id}", reply_markup=markup)
+    bot.send_message(user_id, "📩 تم إرسال طلب حذف حسابك للإدارة، يرجى الانتظار.")
+
+@bot.callback_query_handler(func=lambda call: call.data == "cancel_delete")
+def cancel_delete(call):
+    bot.send_message(call.message.chat.id, "❎ تم إلغاء عملية الحذف.")
+
+# ====== موافقات ورفض من الأدمن ======
+@bot.callback_query_handler(func=lambda call: call.data.startswith(("approve_", "reject_")))
+def handle_admin_actions(call):
+    data = call.data.split("_")
+    action = data[0]
+    action_type = data[1]
+    user_id = int(data[2])
+
+    if action_type == "deposit":
+        if action == "approve":
+            bot.send_message(user_id, "✅ تمت الموافقة على عملية الإيداع الخاصة بك، وتم إضافة الرصيد.")
         else:
-            bot.send_message(user_id, "📌 لديك رد جديد من الإدارة. افتح البوت لعرض التفاصيل.")
-        bot.send_message(ADMIN_ID, "✅ تم إرسال ردّك إلى المستخدم.")
-    except Exception as e:
-        bot.send_message(ADMIN_ID, f"⚠️ فشل إرسال الرد للمستخدم. قد يكون المستخدم حظر البوت. خطأ: {e}")
+            bot.send_message(user_id, "❌ تم رفض عملية الإيداع الخاصة بك.")
+    elif action_type == "withdraw":
+        if action == "approve":
+            bot.send_message(user_id, "✅ تمت الموافقة على عملية السحب الخاصة بك.")
+        else:
+            bot.send_message(user_id, "❌ تم رفض عملية السحب الخاصة بك.")
+    elif action_type == "delete":
+        if action == "approve":
+            user_accounts.pop(user_id, None)
+            bot.send_message(user_id, "🗑️ تمت الموافقة على حذف حسابك.\nيمكنك الآن إنشاء حساب جديد من خلال /start.")
+        else:
+            bot.send_message(user_id, "❌ تم رفض طلب حذف الحساب من قبل الإدارة.")
 
-# ---------- Fallback for text messages (show menu) ----------
-@bot.message_handler(func=lambda m: True)
-def fallback(msg):
-    if msg.content_type == "text":
-        text = msg.text.strip()
-        # تجاهل الأزرار المعروفة (تمت معالجتها)
-        known = {"إنشاء حساب", "إيداع", "سحب", "حذف الحساب", "/start", "/home"}
-        if text not in known:
-            bot.send_message(msg.chat.id, "اختر عملية من الأزرار أدناه:", reply_markup=main_keyboard())
+    bot.answer_callback_query(call.id, "تم تنفيذ الإجراء ✅")
 
-# ========== Run & webhook setup ==========
+# ====== رد الأدمن على المستخدم ======
+@bot.message_handler(func=lambda message: str(message.chat.id) == str(ADMIN_ID) and message.reply_to_message)
+def admin_reply(message):
+    try:
+        target_text = message.reply_to_message.text
+        user_id = int(target_text.split("المستخدم: ")[1].split("\n")[0])
+        bot.send_message(user_id, f"📩 رسالة من الإدارة:\n{message.text}")
+    except Exception:
+        bot.send_message(ADMIN_ID, "⚠️ لم أتمكن من تحديد المستخدم بشكل صحيح.")
+
+# ====== Flask Webhook ======
+@app.route('/' + TOKEN, methods=['POST'])
+def webhook():
+    json_str = request.stream.read().decode('utf-8')
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return '', 200
+
+@app.route('/')
+def index():
+    bot.remove_webhook()
+    bot.set_webhook(url=RENDER_URL + '/' + TOKEN)
+    return "Webhook Set!"
+
 if __name__ == "__main__":
-    # Register webhook if WEBHOOK_URL provided
-    if WEBHOOK_URL and TOKEN and "PUT_YOUR_BOT_TOKEN_HERE" not in TOKEN:
-        full_url = WEBHOOK_URL.rstrip("/") + "/" + TOKEN
-        # remove previous webhook and set new
-        try:
-            bot.remove_webhook()
-            bot.set_webhook(url=full_url)
-            print(f"Webhook set to: {full_url}")
-        except Exception as e:
-            print("Failed to set webhook:", e)
-    else:
-        print("Webhook NOT set. Make sure WEBHOOK_URL env var is defined and TOKEN replaced with real token.")
-
-    # Run Flask app (on Render use gunicorn to run)
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=10000)
