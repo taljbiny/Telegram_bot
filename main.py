@@ -181,9 +181,19 @@ def deposit_start(call):
     
     user_id = str(call.message.chat.id)
     data = load_data()
-    if user_id not in data["user_accounts"]:
+    
+    # 🔥 التحقق إذا فيه طلب شحن قيد الانتظار
+    if user_id in pending_deposits:
+        bot.send_message(user_id, "⏳ لديك طلب شحن قيد الانتظار. انتظر حتى يتم معالجته.", reply_markup=main_menu(user_id))
+        return
+        
+    # 🔥 التحقق من وجود الحساب - نتحقق من البيانات المحفوظة
+    if user_id not in data["user_accounts"] or not data["user_accounts"][user_id]:
         bot.send_message(user_id, "❌ ليس لديك حساب، يرجى إنشاء حساب أولاً.", reply_markup=main_menu(user_id, include_create=True))
         return
+    
+    msg = bot.send_message(call.message.chat.id, f"💰 أدخل المبلغ لشحن الحساب (الحد الأدنى {MIN_AMOUNT}):", reply_markup=back_to_menu())
+    bot.register_next_step_handler(msg, deposit_amount_step)
     
     msg = bot.send_message(call.message.chat.id, f"💰 أدخل المبلغ لشحن الحساب (الحد الأدنى {MIN_AMOUNT}):", reply_markup=back_to_menu())
     bot.register_next_step_handler(msg, deposit_amount_step)
@@ -259,9 +269,19 @@ def withdraw_start(call):
     
     user_id = str(call.message.chat.id)
     data = load_data()
-    if user_id not in data["user_accounts"]:
+    
+    # 🔥 التحقق إذا فيه طلب سحب قيد الانتظار
+    if user_id in pending_withdraws:
+        bot.send_message(user_id, "⏳ لديك طلب سحب قيد الانتظار. انتظر حتى يتم معالجته.", reply_markup=main_menu(user_id))
+        return
+    
+    # 🔥 التحقق من وجود الحساب - نتحقق من البيانات المحفوظة
+    if user_id not in data["user_accounts"] or not data["user_accounts"][user_id]:
         bot.send_message(user_id, "❌ ليس لديك حساب، يرجى إنشاء حساب أولاً.", reply_markup=main_menu(user_id, include_create=True))
         return
+    
+    msg = bot.send_message(call.message.chat.id, f"💰 أدخل المبلغ للسحب (الحد الأدنى {MIN_AMOUNT}):", reply_markup=back_to_menu())
+    bot.register_next_step_handler(msg, withdraw_amount_step)
     
     msg = bot.send_message(call.message.chat.id, f"💰 أدخل المبلغ للسحب (الحد الأدنى {MIN_AMOUNT}):", reply_markup=back_to_menu())
     bot.register_next_step_handler(msg, withdraw_amount_step)
