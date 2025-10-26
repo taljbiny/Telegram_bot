@@ -194,9 +194,6 @@ def deposit_start(call):
     
     msg = bot.send_message(call.message.chat.id, f"💰 أدخل المبلغ لشحن الحساب (الحد الأدنى {MIN_AMOUNT}):", reply_markup=back_to_menu())
     bot.register_next_step_handler(msg, deposit_amount_step)
-    
-    msg = bot.send_message(call.message.chat.id, f"💰 أدخل المبلغ لشحن الحساب (الحد الأدنى {MIN_AMOUNT}):", reply_markup=back_to_menu())
-    bot.register_next_step_handler(msg, deposit_amount_step)
 
 def deposit_amount_step(message):
     if is_back_command(message.text):
@@ -279,9 +276,6 @@ def withdraw_start(call):
     if user_id not in data["user_accounts"] or not data["user_accounts"][user_id]:
         bot.send_message(user_id, "❌ ليس لديك حساب، يرجى إنشاء حساب أولاً.", reply_markup=main_menu(user_id, include_create=True))
         return
-    
-    msg = bot.send_message(call.message.chat.id, f"💰 أدخل المبلغ للسحب (الحد الأدنى {MIN_AMOUNT}):", reply_markup=back_to_menu())
-    bot.register_next_step_handler(msg, withdraw_amount_step)
     
     msg = bot.send_message(call.message.chat.id, f"💰 أدخل المبلغ للسحب (الحد الأدنى {MIN_AMOUNT}):", reply_markup=back_to_menu())
     bot.register_next_step_handler(msg, withdraw_amount_step)
