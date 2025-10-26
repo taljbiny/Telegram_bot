@@ -9,7 +9,7 @@ TOKEN = "8317743306:AAFGH1Acxb6fIwZ0o0T2RvNjezQFW8KWcw8"
 ADMIN_ID = 7625893170
 SYRIATEL_CODE = "82492253"
 SHAM_CODE = "131efe4fbccd83a811282761222eee69"
-RENDER_URL = "https://www.55bets.net/#/casino/"
+RENDER_URL = "https://telegram-bot-xsto.onrender.com"
 DATA_FILE = "data.json"
 MIN_AMOUNT = 25000
 
