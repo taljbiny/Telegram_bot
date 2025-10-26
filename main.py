@@ -13,7 +13,10 @@ SITE_LINK = "https://www.55bets.net/#/casino/"
 RENDER_URL = "https://telegram-bot-xsto.onrender.com"
 DATA_FILE = "data.json"
 MIN_AMOUNT = 25000
-pending_accounts = {}  # لتخزين مؤقت طلبات إنشاء الحساب {user_id: True}
+
+# ====== المتغيرات المؤقتة ======
+pending_accounts = {}  # لتخزين طلبات إنشاء الحساب مؤقتًا {user_id: True}
+
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
@@ -79,20 +82,26 @@ def create_account(call):
     if user_id in data["user_accounts"]:
         bot.answer_callback_query(call.id, "❌ لديك حساب مسبق، احذف الحساب القديم أولاً.")
         return
-    # نطلب من المستخدم الاسم وكلمة السر
-    msg = bot.send_message(call.message.chat.id, "📝 أرسل اسم الحساب وكلمة السر بصيغة:\nUsername: اسم الحساب\nPassword: كلمة السر", reply_markup=back_to_menu())
+    msg = bot.send_message(
+        call.message.chat.id,
+        "📝 أرسل اسم الحساب وكلمة السر بصيغة:\nUsername: اسم الحساب\nPassword: كلمة السر",
+        reply_markup=back_to_menu()
+    )
     bot.register_next_step_handler(msg, process_account_info)
 
-def def process_account_info(message):
+def process_account_info(message):
     if message.text.lower() == "🔙 القائمة الرئيسية":
         bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
         return
     user_id = str(message.chat.id)
-    # حفظ الطلب مؤقتًا
     pending_accounts[user_id] = True
-    # إرسال نص الإنشاء للإدمن مع user_id
-    bot.send_message(ADMIN_ID, f"📩 طلب إنشاء حساب جديد:\n👤 المستخدم: {user_id}\n{message.text}", reply_markup=admin_controls(user_id))
+    bot.send_message(
+        ADMIN_ID,
+        f"📩 طلب إنشاء حساب جديد:\n👤 المستخدم: {user_id}\n{message.text}",
+        reply_markup=admin_controls(user_id)
+    )
     bot.send_message(message.chat.id, "⏳ تم إرسال طلب إنشاء الحساب للإدارة، يرجى الانتظار.", reply_markup=main_menu(user_id))
+
 # ====== شحن الحساب ======
 @bot.callback_query_handler(func=lambda call: call.data.startswith("deposit"))
 def deposit_handler(call):
@@ -190,53 +199,40 @@ def admin_action(call):
     parts = call.data.split("_")
     action = parts[1]
     user_id = parts[2]
-    # الأزرار لا تختفي للإدمن
+
     if action == "manual":
         msg = bot.send_message(ADMIN_ID, f"📝 اكتب الرد للمستخدم {user_id}:")
         bot.register_next_step_handler(msg, lambda m: send_manual_reply(m, user_id))
+
     elif action == "accept":
-    # فقط إذا كان هناك طلب إنشاء حساب
-    if user_id in pending_accounts:
-        lines = call.message.text.split("\n")
-        username_line = next((l for l in lines if l.startswith("Username:")), None)
-        password_line = next((l for l in lines if l.startswith("Password:")), None)
-        if username_line and password_line:
-            username = username_line.split(":",1)[1].strip()
-            password = password_line.split(":",1)[1].strip()
-            data = load_data()
-            data["user_accounts"][user_id] = {"username": username, "password": password}
-            save_data(data)
-            bot.send_message(int(user_id), f"✅ تم إنشاء حسابك!\nUsername: {username}\nPassword: {password}", reply_markup=main_menu(user_id))
-            bot.send_message(ADMIN_ID, f"✅ تم حفظ الحساب للمستخدم {user_id}.")
-            # حذف الطلب من المؤقت
-            del pending_accounts[user_id]
+        if user_id in pending_accounts:
+            lines = call.message.text.split("\n")
+            username_line = next((l for l in lines if l.startswith("Username:")), None)
+            password_line = next((l for l in lines if l.startswith("Password:")), None)
+            if username_line and password_line:
+                username = username_line.split(":",1)[1].strip()
+                password = password_line.split(":",1)[1].strip()
+                data = load_data()
+                data["user_accounts"][user_id] = {"username": username, "password": password}
+                save_data(data)
+                bot.send_message(int(user_id), f"✅ تم إنشاء حسابك!\nUsername: {username}\nPassword: {password}", reply_markup=main_menu(int(user_id)))
+                bot.send_message(ADMIN_ID, f"✅ تم حفظ الحساب للمستخدم {user_id}.")
+                del pending_accounts[user_id]
+            else:
+                bot.send_message(ADMIN_ID, "⚠️ صيغة الاسم وكلمة السر غير صحيحة. استخدم:\nUsername: اسم\nPassword: كلمة")
         else:
-            bot.send_message(ADMIN_ID, "⚠️ صيغة الاسم وكلمة السر غير صحيحة. استخدم:\nUsername: اسم\nPassword: كلمة")
-    else:
-        bot.send_message(int(user_id), "✅ تم قبول طلبك.", reply_markup=main_menu(user_id))    elif action == "reject":
-        bot.send_message(int(user_id), "❌ تم رفض طلبك.", reply_markup=main_menu(user_id))
+            bot.send_message(int(user_id), "✅ تم قبول طلبك.", reply_markup=main_menu(int(user_id)))
+
+    elif action == "reject":
+        bot.send_message(int(user_id), "❌ تم رفض طلبك.", reply_markup=main_menu(int(user_id)))
+        if user_id in pending_accounts:
+            del pending_accounts[user_id]
 
 def send_manual_reply(message, user_id):
-    bot.send_message(int(user_id), f"📩 رسالة من الإدارة:\n{message.text}", reply_markup=main_menu(user_id))
+    bot.send_message(int(user_id), f"📩 رسالة من الإدارة:\n{message.text}", reply_markup=main_menu(int(user_id)))
     bot.send_message(ADMIN_ID, "✅ تم إرسال الرد للمستخدم.")
 
 # ====== Webhook Flask ======
 @app.route('/' + TOKEN, methods=['POST'])
 def webhook():
-    try:
-        json_str = request.stream.read().decode('utf-8')
-        update = telebot.types.Update.de_json(json_str)
-        bot.process_new_updates([update])
-    except Exception as e:
-        print("Webhook error:", e)
-    return '', 200
-
-@app.route('/')
-def index():
-    bot.remove_webhook()
-    bot.set_webhook(url=RENDER_URL + '/' + TOKEN)
-    return "Webhook Set!"
-
-if __name__ == "__main__":
-    PORT = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=PORT)
+   
