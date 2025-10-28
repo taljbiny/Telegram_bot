@@ -3,6 +3,7 @@ from telebot import types
 from flask import Flask, request
 import json
 import os
+import traceback
 from supabase import create_client
 
 # ====== الإعدادات ======
@@ -70,6 +71,7 @@ def save_user_request(user_id, request_type, amount, status="pending"):
             "status": status
         }
         response = supabase.table("user_requests").insert(request_data).execute()
+        print(f"✅ Saved user request: {request_data}")
         return response.data[0] if response.data else None
     except Exception as e:
         print(f"Error saving request: {e}")
@@ -93,9 +95,11 @@ def create_support_chat(user_id):
             "status": "open"
         }
         response = supabase.table("support_chats").insert(chat_data).execute()
+        print(f"✅ Created support chat: {response.data}")
         return response.data[0] if response.data else None
     except Exception as e:
-        print(f"Error creating support chat: {e}")
+        print(f"❌ Error creating support chat: {e}")
+        traceback.print_exc()
         return None
 
 def add_support_message(chat_id, user_id, message, is_from_user=True):
@@ -108,18 +112,22 @@ def add_support_message(chat_id, user_id, message, is_from_user=True):
             "is_from_user": is_from_user
         }
         response = supabase.table("support_messages").insert(message_data).execute()
+        print(f"✅ Added support message: {message_data}")
         return response.data[0] if response.data else None
     except Exception as e:
-        print(f"Error adding support message: {e}")
+        print(f"❌ Error adding support message: {e}")
+        traceback.print_exc()
         return None
 
 def close_support_chat(chat_id):
     """إغلاق محادثة الدعم"""
     try:
         supabase.table("support_chats").update({"status": "closed"}).eq("id", chat_id).execute()
+        print(f"✅ Closed support chat: {chat_id}")
         return True
     except Exception as e:
-        print(f"Error closing chat: {e}")
+        print(f"❌ Error closing chat: {e}")
+        traceback.print_exc()
         return False
 
 # ====== حفظ وقراءة البيانات المحلية ======
@@ -470,7 +478,7 @@ def delete_account(call):
     bot.send_message(ADMIN_ID, f"🗑️ طلب حذف الحساب:\n👤 المستخدم: {user_id}\n👤 اسم الحساب: {username}", reply_markup=admin_controls(user_id))
     bot.send_message(user_id, "📩 تم إرسال طلب حذف الحساب للإدارة، يرجى الانتظار.", reply_markup=main_menu(user_id))
 
-# ====== الدعم المتقدم ======
+# ====== الدعم المتقدم - النسخة المصححة ======
 @bot.callback_query_handler(func=lambda call: call.data == "support")
 def support_handler(call):
     try:
@@ -502,22 +510,31 @@ def handle_support_message(message, chat_id):
         add_support_message(chat_id, user_id, message.text, True)
         # إرسال للإدمن
         bot.send_message(ADMIN_ID, f"📩 رسالة دعم جديدة من {user_id}:\n{message.text}", reply_markup=admin_controls(user_id))
+        bot.send_message(message.chat.id, "✅ تم إرسال رسالتك للدعم. انتظر الرد.")
     elif message.photo:
         file_id = message.photo[-1].file_id
         add_support_message(chat_id, user_id, "[صورة]", True)
         # إرسال الصورة للإدمن
         bot.send_photo(ADMIN_ID, file_id, caption=f"📩 صورة دعم جديدة من {user_id}", reply_markup=admin_controls(user_id))
+        bot.send_message(message.chat.id, "✅ تم إرسال صورتك للدعم. انتظر الرد.")
     
+    # نعيد فتح المحادثة للردود التالية
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔙 إنهاء المحادثة", callback_data=f"end_chat_{chat_id}"))
+    markup.add(types.InlineKeyboardButton("🔚 إنهاء المحادثة", callback_data=f"end_chat_{chat_id}"))
     
-    bot.send_message(message.chat.id, "✅ تم إرسال رسالتك إلى الدعم. ستتلقى الرد قريبًا.", reply_markup=markup)
+    msg = bot.send_message(message.chat.id, "✍️ يمكنك إرسال رسالة أخرى أو إنهاء المحادثة:", reply_markup=markup)
+    bot.register_next_step_handler(msg, lambda m: handle_support_message(m, chat_id))
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("end_chat_"))
 def end_support_chat(call):
-    chat_id = call.data.split("_")[2]
-    close_support_chat(chat_id)
-    bot.send_message(call.message.chat.id, "🔚 تم إنهاء محادثة الدعم.", reply_markup=main_menu(call.message.chat.id))
+    try:
+        chat_id = int(call.data.split("_")[2])  # تحويل لـ integer
+        close_support_chat(chat_id)
+        bot.send_message(call.message.chat.id, "🔚 تم إنهاء محادثة الدعم.", reply_markup=main_menu(call.message.chat.id))
+    except Exception as e:
+        print(f"❌ Error ending chat: {e}")
+        traceback.print_exc()
+        bot.send_message(call.message.chat.id, "❌ حدث خطأ في إنهاء المحادثة.", reply_markup=main_menu(call.message.chat.id))
 
 # ====== لوحة تحكم الإدمن ======
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_"))
