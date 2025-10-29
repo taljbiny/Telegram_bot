@@ -16,6 +16,9 @@ pending_deposits = {}      # { user_id: {amount, method, file_id} }
 pending_withdraws = {}     # { user_id: {amount, method, wallet} }
 pending_deletes = {}       # { user_id: {account} }
 
+# ====== تتبع حالة المستخدمين ======
+user_states = {}  # { user_id: "state" }
+
 # ====== إعدادات إضافية ======
 DATA_FILE = "data.json"
 RENDER_URL = "https://telegram-bot-xsto.onrender.com"
@@ -173,6 +176,7 @@ def show_main_menu(call):
     pending_accounts.pop(user_id, None)
     pending_deposits.pop(user_id, None)
     pending_withdraws.pop(user_id, None)
+    user_states.pop(user_id, None)  # ✅ تنظيف حالة المستخدم
     
     data = load_data()
     include_create = user_id not in data["user_accounts"]
@@ -440,34 +444,38 @@ def support_handler(call):
     
     user_id = str(call.message.chat.id)
     
+    # ✅ تحديث حالة المستخدم
+    user_states[user_id] = "in_support"
+    
     # إنشاء محادثة دعم جديدة
     chat = create_support_chat(user_id)
     
     if chat:
-        # ✅ عرض خيارات واضحة
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("🔚 إنهاء المحادثة", callback_data=f"end_chat_{chat['id']}"))
         
         msg = bot.send_message(
             call.message.chat.id, 
-            "📩 **وضع الدعم نشط**\n\nارسل رسالتك الآن...\nستصل رسالتك مباشرة للإدارة.\nاستخدم الزر بالأعلى لإنهاء المحادثة.", 
+            "📩 **وضع الدعم نشط**\n\nارسل رسالتك الآن...\nستصل رسالتك مباشرة للإدارة.", 
             reply_markup=markup,
             parse_mode="Markdown"
         )
         
-        # ✅ تسجيل next_step_handler مرة واحدة فقط
         bot.register_next_step_handler(msg, lambda m: handle_support_message(m, chat['id']))
     else:
         bot.send_message(call.message.chat.id, "❌ حدث خطأ في فتح محادثة الدعم.", reply_markup=main_menu(call.message.chat.id))
+
 def handle_support_message(message, chat_id):
+    user_id = str(message.chat.id)
+    
     if is_back_command(message.text):
         close_support_chat(chat_id)
+        # ✅ تحديث حالة المستخدم
+        user_states.pop(user_id, None)
         bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
         return
     
-    user_id = str(message.chat.id)
-    
-    # حفظ الرسالة
+    # ✅ الإصلاح: إرسال الرسالة للإدمن من هنا فقط
     if message.text:
         add_support_message(chat_id, user_id, message.text, True)
         bot.send_message(ADMIN_ID, f"📩 رسالة دعم جديدة من {user_id}:\n{message.text}", reply_markup=admin_controls(user_id))
@@ -478,30 +486,38 @@ def handle_support_message(message, chat_id):
         bot.send_photo(ADMIN_ID, file_id, caption=f"📩 صورة دعم جديدة من {user_id}", reply_markup=admin_controls(user_id))
         bot.send_message(message.chat.id, "✅ تم إرسال صورتك للدعم. انتظر الرد.")
     
-    # ✅ الإصلاح: نعرض الخيارات بدون ما نفتح loop جديد
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔚 إنهاء المحادثة", callback_data=f"end_chat_{chat_id}"))
-    markup.add(types.InlineKeyboardButton("📩 إرسال رسالة أخرى", callback_data="support"))
-    
-    bot.send_message(message.chat.id, "اختر الإجراء التالي:", reply_markup=markup)
-    
-    # نعيد فتح المحادثة للردود التالية
+    # ✅ نعيد فتح استقبال الرسائل للدعم
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🔚 إنهاء المحادثة", callback_data=f"end_chat_{chat_id}"))
     
-    msg = bot.send_message(message.chat.id, "✍️ يمكنك إرسال رسالة أخرى أو إنهاء المحادثة:", reply_markup=markup)
+    msg = bot.send_message(message.chat.id, "✍️ يمكنك إرسال رسالة أخرى:", reply_markup=markup)
     bot.register_next_step_handler(msg, lambda m: handle_support_message(m, chat_id))
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("end_chat_"))
 def end_support_chat(call):
     try:
-        chat_id = int(call.data.split("_")[2])  # تحويل لـ integer
+        chat_id = int(call.data.split("_")[2])
         close_support_chat(chat_id)
+        user_id = str(call.message.chat.id)
+        # ✅ تحديث حالة المستخدم
+        user_states.pop(user_id, None)
         bot.send_message(call.message.chat.id, "🔚 تم إنهاء محادثة الدعم.", reply_markup=main_menu(call.message.chat.id))
     except Exception as e:
         print(f"❌ Error ending chat: {e}")
-        traceback.print_exc()
         bot.send_message(call.message.chat.id, "❌ حدث خطأ في إنهاء المحادثة.", reply_markup=main_menu(call.message.chat.id))
+
+# ====== معالج الرسائل العادية ======
+@bot.message_handler(func=lambda message: True, content_types=['text', 'photo'])
+def handle_normal_messages(message):
+    """تتعامل مع الرسائل العادية (غير الدعم)"""
+    user_id = str(message.chat.id)
+    
+    # ✅ إذا المستخدم مش في وضع الدعم، نعرض القائمة الرئيسية
+    if user_id not in user_states:
+        if message.text and not message.text.startswith('/'):
+            bot.send_message(message.chat.id, "🔍 لم أفهم طلبك. استخدم الأزرار أدناه:", reply_markup=main_menu(message.chat.id))
+    
+    # ✅ إذا المستخدم في وضع الدعم، الرسالة رح تتعامل معها handle_support_message
 
 # ====== لوحة تحكم الإدمن ======
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_"))
