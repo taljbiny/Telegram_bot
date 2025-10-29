@@ -444,11 +444,21 @@ def support_handler(call):
     chat = create_support_chat(user_id)
     
     if chat:
-        msg = bot.send_message(call.message.chat.id, "📩 اكتب رسالتك للدعم (يمكنك إرسال نص أو صورة):", reply_markup=back_to_menu())
+        # ✅ عرض خيارات واضحة
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("🔚 إنهاء المحادثة", callback_data=f"end_chat_{chat['id']}"))
+        
+        msg = bot.send_message(
+            call.message.chat.id, 
+            "📩 **وضع الدعم نشط**\n\nارسل رسالتك الآن...\nستصل رسالتك مباشرة للإدارة.\nاستخدم الزر بالأعلى لإنهاء المحادثة.", 
+            reply_markup=markup,
+            parse_mode="Markdown"
+        )
+        
+        # ✅ تسجيل next_step_handler مرة واحدة فقط
         bot.register_next_step_handler(msg, lambda m: handle_support_message(m, chat['id']))
     else:
         bot.send_message(call.message.chat.id, "❌ حدث خطأ في فتح محادثة الدعم.", reply_markup=main_menu(call.message.chat.id))
-
 def handle_support_message(message, chat_id):
     if is_back_command(message.text):
         close_support_chat(chat_id)
@@ -457,18 +467,23 @@ def handle_support_message(message, chat_id):
     
     user_id = str(message.chat.id)
     
-    # حفظ الرسالة في قاعدة البيانات
+    # حفظ الرسالة
     if message.text:
         add_support_message(chat_id, user_id, message.text, True)
-        # إرسال للإدمن
         bot.send_message(ADMIN_ID, f"📩 رسالة دعم جديدة من {user_id}:\n{message.text}", reply_markup=admin_controls(user_id))
         bot.send_message(message.chat.id, "✅ تم إرسال رسالتك للدعم. انتظر الرد.")
     elif message.photo:
         file_id = message.photo[-1].file_id
         add_support_message(chat_id, user_id, "[صورة]", True)
-        # إرسال الصورة للإدمن
         bot.send_photo(ADMIN_ID, file_id, caption=f"📩 صورة دعم جديدة من {user_id}", reply_markup=admin_controls(user_id))
         bot.send_message(message.chat.id, "✅ تم إرسال صورتك للدعم. انتظر الرد.")
+    
+    # ✅ الإصلاح: نعرض الخيارات بدون ما نفتح loop جديد
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🔚 إنهاء المحادثة", callback_data=f"end_chat_{chat_id}"))
+    markup.add(types.InlineKeyboardButton("📩 إرسال رسالة أخرى", callback_data="support"))
+    
+    bot.send_message(message.chat.id, "اختر الإجراء التالي:", reply_markup=markup)
     
     # نعيد فتح المحادثة للردود التالية
     markup = types.InlineKeyboardMarkup()
