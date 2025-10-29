@@ -376,14 +376,39 @@ def withdraw_amount_step(message):
         types.InlineKeyboardButton("سيرياتيل كاش", callback_data=f"withdraw_method_syriatel_{amount}"),
         types.InlineKeyboardButton("شام كاش", callback_data=f"withdraw_method_sham_{amount}")
     )
-    bot.send_message(message.chat.id, "💳 اختر طريقة السحب:", reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("withdraw_method_"))
-def withdraw_method_selected(call):
-    try:
-        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
-    except:
-        pass
+    @bot.message_handler(func=lambda message: True, content_types=['text', 'photo'])
+def handle_all_messages(message):
+    """تتعامل مع كل الرسائل"""
+    user_id = str(message.chat.id)
+    
+    # إذا كان في محادثة دعم نشطة
+    if user_id in active_support_sessions:
+        chat_id = active_support_sessions[user_id]
+        
+        # إذا كانت رسالة إنهاء المحادثة
+        if message.text and "إنهاء" في message.text:
+            end_support_session(user_id)
+            return
+        
+        # معالجة رسالة الدعم
+        if message.text:
+            add_support_message(chat_id, user_id, message.text, True)
+            bot.send_message(ADMIN_ID, f"📩 رسالة دعم جديدة من {user_id}:\n{message.text}", reply_markup=admin_controls(user_id))
+            bot.send_message(user_id, "✅ تم إرسال رسالتك للدعم. انتظر الرد.")
+        elif message.photo:
+            file_id = message.photo[-1].file_id
+            add_support_message(chat_id, user_id, "[صورة]", True)
+            bot.send_photo(ADMIN_ID, file_id, caption=f"📩 صورة دعم جديدة من {user_id}", reply_markup=admin_controls(user_id))
+            bot.send_message(user_id, "✅ تم إرسال صورتك للدعم. انتظر الرد.")
+        
+        # إعادة عرض زر إنهاء المحادثة
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("🔚 إنهاء المحادثة", callback_data=f"end_chat_{chat_id}"))
+        bot.send_message(user_id, "✍️ يمكنك إرسال رسالة أخرى:", reply_markup=markup)
+    
+    # إذا ما كان في محادثة دعم وكانت رسالة عادية
+    elif message.text and not message.text.startswith('/'):
+        bot.send_message(user_id, "🔍 لم أفهم طلبك. استخدم الأزرار أدناه:", reply_markup=main_menu(user_id))
     
     parts = call.data.split("_")
     method = parts[2]
