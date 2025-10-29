@@ -16,8 +16,8 @@ pending_deposits = {}      # { user_id: {amount, method, file_id} }
 pending_withdraws = {}     # { user_id: {amount, method, wallet} }
 pending_deletes = {}       # { user_id: {account} }
 
-# ====== تتبع حالة المستخدمين ======
-user_states = {}  # { user_id: "state" }
+# ====== نظام الدعم المصحح كلياً ======
+active_support_sessions = {}  # { user_id: chat_id }
 
 # ====== إعدادات إضافية ======
 DATA_FILE = "data.json"
@@ -176,7 +176,7 @@ def show_main_menu(call):
     pending_accounts.pop(user_id, None)
     pending_deposits.pop(user_id, None)
     pending_withdraws.pop(user_id, None)
-    user_states.pop(user_id, None)  # ✅ تنظيف حالة المستخدم
+    active_support_sessions.pop(user_id, None)  # ✅ تنظيف جلسات الدعم
     
     data = load_data()
     include_create = user_id not in data["user_accounts"]
@@ -434,7 +434,7 @@ def delete_account(call):
     bot.send_message(ADMIN_ID, f"🗑️ طلب حذف الحساب:\n👤 المستخدم: {user_id}\n👤 اسم الحساب: {username}", reply_markup=admin_controls(user_id))
     bot.send_message(user_id, "📩 تم إرسال طلب حذف الحساب للإدارة، يرجى الانتظار.", reply_markup=main_menu(user_id))
 
-# ====== الدعم المتقدم - النسخة المصححة ======
+# ====== نظام الدعم المصحح كلياً ======
 @bot.callback_query_handler(func=lambda call: call.data == "support")
 def support_handler(call):
     try:
@@ -444,229 +444,415 @@ def support_handler(call):
     
     user_id = str(call.message.chat.id)
     
-    # ✅ تحديث حالة المستخدم
-    user_states[user_id] = "in_support"
+    # التحقق إذا فيه محادثة نشطة
+    if user_id in active_support_sessions:
+        bot.send_message(user_id, "⚠️ لديك محادثة دعم نشطة مسبقاً.")
+        return
     
     # إنشاء محادثة دعم جديدة
     chat = create_support_chat(user_id)
     
     if chat:
+        # حفظ المحادثة النشطة
+        active_support_sessions[user_id] = chat['id']
+        
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("🔚 إنهاء المحادثة", callback_data=f"end_chat_{chat['id']}"))
         
-        msg = bot.send_message(
-            call.message.chat.id, 
+        bot.send_message(
+            user_id, 
             "📩 **وضع الدعم نشط**\n\nارسل رسالتك الآن...\nستصل رسالتك مباشرة للإدارة.", 
             reply_markup=markup,
             parse_mode="Markdown"
         )
-        
-        bot.register_next_step_handler(msg, lambda m: handle_support_message(m, chat['id']))
     else:
-        bot.send_message(call.message.chat.id, "❌ حدث خطأ في فتح محادثة الدعم.", reply_markup=main_menu(call.message.chat.id))
+        bot.send_message(user_id, "❌ حدث خطأ في فتح محادثة الدعم.", reply_markup=main_menu(user_id))
 
-def handle_support_message(message, chat_id):
-    user_id = str(message.chat.id)
-    
-    if is_back_command(message.text):
-        close_support_chat(chat_id)
-        # ✅ تحديث حالة المستخدم
-        user_states.pop(user_id, None)
-        bot.send_message(message.chat.id, "🔙 عدت للقائمة الرئيسية.", reply_markup=main_menu(message.chat.id))
-        return
-    
-    # ✅ الإصلاح: إرسال الرسالة للإدمن من هنا فقط
-    if message.text:
-        add_support_message(chat_id, user_id, message.text, True)
-        bot.send_message(ADMIN_ID, f"📩 رسالة دعم جديدة من {user_id}:\n{message.text}", reply_markup=admin_controls(user_id))
-        bot.send_message(message.chat.id, "✅ تم إرسال رسالتك للدعم. انتظر الرد.")
-    elif message.photo:
-        file_id = message.photo[-1].file_id
-        add_support_message(chat_id, user_id, "[صورة]", True)
-        bot.send_photo(ADMIN_ID, file_id, caption=f"📩 صورة دعم جديدة من {user_id}", reply_markup=admin_controls(user_id))
-        bot.send_message(message.chat.id, "✅ تم إرسال صورتك للدعم. انتظر الرد.")
-    
-    # ✅ نعيد فتح استقبال الرسائل للدعم
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔚 إنهاء المحادثة", callback_data=f"end_chat_{chat_id}"))
-    
-    msg = bot.send_message(message.chat.id, "✍️ يمكنك إرسال رسالة أخرى:", reply_markup=markup)
-    bot.register_next_step_handler(msg, lambda m: handle_support_message(m, chat_id))
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("end_chat_"))
-def end_support_chat(call):
-    try:
-        chat_id = int(call.data.split("_")[2])
-        close_support_chat(chat_id)
-        user_id = str(call.message.chat.id)
-        # ✅ تحديث حالة المستخدم
-        user_states.pop(user_id, None)
-        bot.send_message(call.message.chat.id, "🔚 تم إنهاء محادثة الدعم.", reply_markup=main_menu(call.message.chat.id))
-    except Exception as e:
-        print(f"❌ Error ending chat: {e}")
-        bot.send_message(call.message.chat.id, "❌ حدث خطأ في إنهاء المحادثة.", reply_markup=main_menu(call.message.chat.id))
-
-# ====== معالج الرسائل العادية ======
 @bot.message_handler(func=lambda message: True, content_types=['text', 'photo'])
-def handle_normal_messages(message):
-    """تتعامل مع الرسائل العادية (غير الدعم)"""
+def handle_all_messages(message):
+    """تتعامل مع كل الرسائل"""
     user_id = str(message.chat.id)
     
-    # ✅ إذا المستخدم مش في وضع الدعم، نعرض القائمة الرئيسية
-    if user_id not in user_states:
-        if message.text and not message.text.startswith('/'):
-            bot.send_message(message.chat.id, "🔍 لم أفهم طلبك. استخدم الأزرار أدناه:", reply_markup=main_menu(message.chat.id))
+    # إذا كان في محادثة دعم نشطة
+    if user_id in active_support_sessions:
+        chat_id = active_support_sessions[user_id        chat_id = active_support_sessions[user_id]
+        
+        # إذا]
+        
+        # إذا كانت رسالة إنه كانت رسالة إنهاءاء المحادثة
+        if المحادثة
+        if message.text and "إن message.text and "إنهاء" in messageهاء" in message.text:
+            end.text:
+            end_s_support_session(user_id)
+upport_session(user_id)
+            return
+            
+        # مع            return
+            
+        # معالالجة رسالة الدعم
+       جة رسالة الدعم
+        if message if message.text:
+            add.text:
+            add_s_support_message(chat_idupport_message(chat_id, user_id,, user_id, message message.text, True)
+           .text, True)
+            bot.send bot.send_message(ADMIN_message(ADMIN_ID, f"📩_ID, f"📩 رسالة دعم جديدة من رسالة دعم جديدة من {user_id}:\ {user_id}:\n{message.text}",n{message.text}", reply_markup= reply_markup=admin_controls(user_id))
+           admin_controls(user_id))
+            bot.send_message(user bot.send_message(user_id, "✅_id, "✅ تم إ تم إرسالرسال رسالتك لل رسالتك للدعم. انتدعم. انتظر الرد.")
+       ظر الرد.")
+        elif message.photo elif message.photo:
+            file_id =:
+            file_id = message.photo[-1 message.photo[-1].file_id
+            add_support].file_id
+            add_support_message(chat_message(chat_id, user_id,_id, user_id, "[صورة "[صورة]", True)
+            bot.send]", True)
+            bot.send_photo_photo(ADMIN_ID(ADMIN_ID, file, file_id,_id, caption=f caption=f"📩 ص"📩 صورة دورة دعم جديدة من {عم جديدة من {user_iduser_id}", reply_markup=admin_controls(user_id))
+            bot}", reply_markup=admin_controls(user_id))
+            bot.send_message(user_id, "✅ تم إرسال صورتك لل.send_message(user_id, "✅ تم إرسال صورتك للدعم. انتدعم. انتظر الظر الرد.")
+        
+رد.")
+        
+        # إ        # إعادة عرضعادة عرض زر إنه زر إنهاء المحاء المحادثةادثة
+       
+        markup = types.In markup = types.InlineKeyboardMarkup()
+       lineKeyboardMarkup()
+        markup.add markup.add(types.Inline(types.InlineKeyboardButtonKeyboardButton("("🔚 إنه🔚 إنهاء المحاداء المحادثة",ثة", callback_data=f" callback_data=f"end_chend_chat_{chatat_{chat_id}_id}"))
+        bot"))
+        bot.send_message(user.send_message(user_id_id, "✍, "✍️ يمكنك إ️ يمكنك إرسال رسالة أخرىرسال رسالة أخرى:", reply_markup:", reply_markup=markup)
     
-    # ✅ إذا المستخدم في وضع الدعم، الرسالة رح تتعامل معها handle_support_message
+   =markup)
+    
+    # إذا # إذا ما ما كان في مح كان في محادثةادثة دعم وكان دعم وكانت رست رسالة عالة عادية
+    elifادية message.text and not
+    elif message.text and not message.text.startswith message.text.startswith('/'):
+('/'):
+        bot.send_message        bot.send_message(user_id(user_id, ", "🔍 لم أف🔍 لم أفهمهم طلبك طلبك. استخدم الأ. استخدم الأزرار أدناه:", reply_mزرار أدناه:", reply_markup=mainarkup=main_menu_menu(user_id))
 
-# ====== لوحة تحكم الإدمن ======
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_"))
-def admin_action(call):
-    data = call.data.split("_")
+@bot(user_id))
+
+@bot.call.callback_query_handler(funcback_query_handler(func=lambda=lambda call: call.data call: call.data.startswith.startswith("end_chat("end_chat_"))
+_"))
+def end_supportdef end_support_chat(call_chat(call):
+    user_id = str(c):
+    user_id = str(call.message.chall.message.chat.id)
+    end_support_session(user_id)
+   at.id)
+    end_support_session(user_id)
+    bot.send_message(user bot.send_message(user_id, "🔚 تم_id, "🔚 تم إنه إنهاء محادثة الدعم.", reply_markاء محادثة الدعم.", reply_markup=main_menu(user_id))
+
+defup=main_menu(user_id))
+
+def end_support_session(user_id):
+    end_support_session(user_id):
+    """إنهاء ج """إنهاء جلسة الدعم"""
+لسة الدعم"""
+    if user_id in    if user_id in active active_support_sessions:
+       _support_sessions:
+        chat_id = active chat_id = active_support_sessions[user_id]
+        close_support_chat(chat_id)
+        active_support_support_sessions[user_id]
+        close_support_chat(chat_id)
+        active_support_sessions.pop(user_sessions.pop(user_id,_id, None)
+
+ None)
+
+# ======# ====== لوحة لوحة تحكم الإ تحكم الإدمن =دمن ======
+=====
+@bot.callback@bot.callback_query_handler_query_handler(func=lambda(func=lambda call: call.data call: call.data.startswith.startswith("admin_"))
+("admin_"))
+def admindef admin_action(c_action(callall):
+):
+    data = call.data.split("    data = call.data.split("_")
+   _")
     action = data[1]
-    user_id = data[2]
+    user action = data[1]
+    user_id = data[_id = data[2]
+
+2    if action == "accept]
 
     if action == "accept":
-        # 🟢 حالة 1: إنشاء حساب جديد
-        if user_id in pending_accounts:
-            msg = bot.send_message(
-                ADMIN_ID,
-                f"🆕 ارسل بيانات الحساب النهائية للمستخدم {user_id}:\n(يمكنك إرسال أي نص - لن يتم التحقق من الصيغة)"
+        #":
+        # 🟢 🟢 حالة 1: حالة 1: إن إنشاء حساب جديد
+       شاء حساب جديد
+        if user_id in pending if user_id in pending_account_accounts:
+            msgs:
+            msg = bot = bot.send_message(
+               .send_message(
+                ADMIN ADMIN_ID,
+                f"_ID,
+                f"🆕 ار🆕 ارسل بيانات الحسل بيانات الحساب النهائية للمستخدمساب النهائية للمستخدم {user_id} {user_id}:\n(يمكنك إ:\n(يمكنك إرسال أي نص -رسال أي نص - لن يتم التح لن يتم التحقق منقق من الصيغة)"
+ الصيغة)"
             )
-            bot.register_next_step_handler(msg, lambda m: admin_confirm_account_data(m, user_id))
+            )
+            bot.register            bot.register_next_step_handler_next_step_handler(msg,(msg, lambda m: lambda m: admin_confirm admin_confirm_account_data(m, user_id))
+           _account_data(m, user_id return
+
+        # 🟢 حالة 2: حذف حساب
+))
             return
 
         # 🟢 حالة 2: حذف حساب
-        elif user_id in pending_deletes:
+        elif        elif user_id in pending user_id in pending_de_deletes:
+            data_fileletes:
             data_file = load_data()
-            if user_id in data_file["user_accounts"]:
-                del data_file["user_accounts"][user_id]
-                save_data(data_file)
+            = load_data()
+            if if user_id in data user_id in data_file["_file["user_accounts"]user_accounts"]:
+:
+                del data_file["                del data_file["user_accountuser_accounts"][s"][user_id]
+user_id]
+                save                save_data(data_file)
             pending_deletes.pop(user_id, None)
-            try:
-                bot.send_message(int(user_id), "✅ تم حذف حسابك بنجاح، يمكنك الآن إنشاء حساب جديد.", reply_markup=main_menu(int(user_id), include_create=True))
+           _data(data_file)
+            pending_deletes.pop(user_id, None)
+            try try:
+                bot.send_message:
+                bot.send_message(int(int(user_id), "(user_id), "✅✅ تم حذف حساب تم حذف حسابك بنجاح، يمكنك بنجاح، يمكنك الآن إنشاء حسابك الآن إنشاء حساب جديد جديد.", reply_mark.", reply_markupup=main_menu(int(user=main_menu(int(user_id), include_create=True))
+_id), include_create=True))
             except:
                 pass
-            bot.send_message(ADMIN_ID, f"🗑️ تم حذف حساب المستخدم {user_id} بنجاح.")
-            return
-
-        # 🟢 حالة 3: شحن حساب
-        elif user_id in pending_deposits:
-            dep = pending_deposits.pop(user_id)
-            try:
-                bot.send_message(int(user_id), f"✅ تم قبول طلب الشحن.\n💰 سيتم إضافة الرصيد إلى حسابك خلال 5 دقائق كحد أقصى.", reply_markup=main_menu(int(user_id)))
             except:
                 pass
-            bot.send_message(ADMIN_ID, f"💰 تم قبول شحن المستخدم {user_id} ({dep['amount']} عبر {dep['method']}).")
+            bot.send_message(AD            bot.send_message(MIN_ID, f"ADMIN_ID, f🗑️ تم ح"🗑️ تم حذف حساب المستخدم {ذف حساب المستخدمuser_id} بنجاح.")
             return
 
-        # 🟢 حالة 4: سحب رصيد
-        elif user_id in pending_withdraws:
+        {user_id} بنجاح.")
+            return
+
+        # 🟢 حالة # 🟢 حالة 3: شحن حساب 3: شحن حساب
+       
+        elif user_id in pending_deposits elif user_id in pending_deposits:
+            dep = pending:
+            dep = pending_deposits.pop(user_deposits.pop(user_id)
+            try:
+                bot.send_message(int_id)
+            try:
+                bot.send_message(int(user_id), f"✅(user_id), f"✅ تم قب تم قبول طلب الشول طلب الشحن.\n💰 سيتم إضافة الرصحن.\n💰 سيتم إضافة الرصيد إلى حسابك خلاليد إلى حسابك خلال 5 دقائق 5 دقائق ك كحد أقصى.",حد أقصى.", reply_markup=main reply_markup=main_menu(int_menu(int(user_id)))
+            except:
+                pass(user_id)))
+            except:
+                pass
+            bot.send
+            bot.send_message(ADMIN_ID, f"💰_message(ADMIN_ID, f"💰 تم تم قبول شحن المستخدم {user قبول شحن المستخدم {user_id}_id} ({dep['amount']} عبر {dep[' ({dep['amount']} عبر {dep['method']}).")
+            returnmethod']}).")
+            return
+
+        #
+
+        # 🟢 🟢 حالة 4: حالة 4: سحب رص سحب رصيد
+        elif user_idيد
+        elif user_id in pending in pending_withdraws:
+            wd = pending_with_withdraws:
             wd = pending_withdraws.pop(user_id)
+draws.pop(user_id)
             try:
-                bot.send_message(int(user_id), f"✅ تم قبول طلب السحب.\n💵 سيتم تحويل المبلغ إلى محفظتك في أقرب وقت ممكن.", reply_markup=main_menu(int(user_id)))
+                           try:
+                bot.send_message(int(user_id bot.send_message(int(user_id), f"✅ تم قب), f"✅ تم قبول طلب السحبول طلب السحب.\n💵 سي.\n💵 سيتم تحويل المبلغ إلىتم تحويل المبلغ إلى محفظتك في أقرب محفظتك في أقرب وقت ممكن.", reply_markup=main_menu(int(user_id)))
+            except وقت ممكن.", reply_markup=main_menu(int(user_id)))
             except:
                 pass
-            bot.send_message(ADMIN_ID, f"💸 تم قبول سحب المستخدم {user_id} ({wd['amount']} إلى {wd['wallet']}).")
+            bot:
+                pass
+            bot.send_message(.send_message(ADMIN_ID, f"💸 تم قبول سحب المستخدم {userADMIN_ID, f"💸 تم قبول سحب المستخدم {user_id_id} ({wd['amount']} إلى {} ({wd['amount']} إلى {wd['wd['wallet']}).")
+           wallet']}).")
             return
 
         else:
-            bot.send_message(ADMIN_ID, "⚠️ لم يتم التعرف على نوع الطلب لقبوله.")
             return
 
-    elif action == "reject":
+        else:
+            bot.send_message(ADMIN bot.send_message(ADMIN_ID, "⚠_ID, "⚠️ لم يتم التعرف على️ لم يتم التعرف على نوع الطلب لقبوله نوع الطلب لقب.")
+            return
+
+    elifوله.")
+            return
+
+    elif action == "reject action == "reject":
+        pending_accounts":
         pending_accounts.pop(user_id, None)
-        pending_deletes.pop(user_id, None)
-        pending_deposits.pop(user_id, None)
-        pending_withdraws.pop(user_id, None)
+.pop(user_id, None)
+        pending_deletes.pop(user        pending_deletes.pop(user_id, None)
+       _id, None)
+        pending_deposits pending_deposits.pop(user_id, None.pop(user_id, None)
+)
+        pending_withdraw        pending_withdraws.pops.pop(user_id, None(user_id, None)
         
         try:
-            bot.send_message(int(user_id), "❌ تم رفض طلبك من قبل الإدارة.", reply_markup=main_menu(int(user_id)))
-        except:
+           )
+        
+        try:
+            bot.send_message(int(user bot.send_message(int(user_id_id), "❌), "❌ تم ر تم رفض طلبكفض طلبك من قبل الإدارة.", reply من قبل الإدارة.", reply_markup=_markup=main_menumain_menu(int(user_id)))
+(int(user_id)))
+        except        except:
             pass
-        bot.send_message(ADMIN_ID, f"🚫 تم رفض طلب المستخدم {user_id}.")
+:
+            pass
+        bot        bot.send_message(.send_message(ADADMIN_ID, fMIN_ID, f""🚫 تم رفض🚫 تم رفض طلب المستخدم {user_id طلب المستخدم {user_id}}.")
+        return
+
+.")
         return
 
     elif action == "manual":
-        msg = bot.send_message(ADMIN_ID, f"📝 اكتب الرد اليدوي الذي تريد إرساله للمستخدم {user_id}:")
-        bot.register_next_step_handler(msg, lambda m: send_manual_reply(m, user_id))
+        msg = bot.send_message(ADMIN    elif action == "manual":
+        msg = bot.send_message(ADMIN_ID, f"📝 اكتب ال_ID, f"📝 اكتب الرد اليدوي الذي تريد إرسرد اليدوي الذي تريد إرساله للمستخدم {user_idاله للمستخدم {user_id}:")
+        bot.register_next}:")
+        bot.register_next_step_handler(msg, lambda_step_handler(msg, lambda m m: send_manual_re: send_manualply(m, user_id_reply(m, user_id))
+        return
+
+def admin))
         return
 
 def admin_confirm_account_data(message, user_id):
-    text = (message.text or "").strip()
+   _confirm_account_data(message, user_id):
+    text = (message.text or "" text = (message.text).strip()
+    
+    if not or "").strip()
     
     if not text:
-        bot.send_message(ADMIN_ID, "❌ لم يتم إرسال أي بيانات. أعد المحاولة.")
+        text:
+        bot.send_message bot.send_message(AD(ADMINMIN_ID,_ID, "❌ لم يتم إرسال أي "❌ لم يتم إرسال أي بيانات. بيانات. أعد المحاول أعد المحاولة.")
+ة.")
         return
     
-    # استخدام النص كما هو بدون تحقق من الصيغة
-    data = load_data()
-    data["user_accounts"][user_id] = {"username": text, "password": "سيتم إرسالها للمستخدم"}
+        return
+    
+    # استخدام    # استخدام النص النص كما هو كما هو بدون تحقق من بدون تحقق من الصي الصيغة
+    dataغة
+    data = load = load_data()
+    data["user_accounts_data()
+    data["user_accounts"][user_id] = {"username"][user_id] =": text, "password": {"username": text, " "سيتم إرسpassword": "سيتم إرسالها للمستخدم"}
+    save_data(dataالها للمستخدم"}
     save_data(data)
 
     try:
-        bot.send_message(int(user_id), f"✅ تم إنشاء حسابك بنجاح!\n{text}", reply_markup=main_menu(int(user_id)))
+)
+
+    try:
+        bot        bot.send_message(int(user.send_message(int(user_id), f"_id), f"✅ تم✅ تم إنشاء حسابك إنشاء حسابك بنج بنجاح!\اح!\n{text}",n{text}", reply_markup reply_markup=main=main_menu(int_menu(int(user_id)))
     except:
         pass
 
-    bot.send_message(ADMIN_ID, f"✅ تم حفظ الحساب للمستخدم {user_id}:\n{text}")
+    bot.send_message(ADMIN_ID,(user_id)))
+    except:
+        pass
 
-    # تنظيف الطلبات المؤقتة
-    pending_accounts.pop(user_id, None)
-    pending_deposits.pop(user_id, None)
-    pending_withdraws.pop(user_id, None)
-    pending_deletes.pop(user_id, None)
+    bot.send_message(ADMIN_ID, f"✅ تم حفظ الحس f"✅ تم حفظ الحساب للمستخدماب {user_id}:\n للمستخدم {user_id}{text}")
 
-def send_manual_reply(message, user_id):
+    #:\n{text}")
+
+    # تنظيف تنظيف الط الطلبات المؤقتلبات المؤقتة
+ة
+    pending_account    pending_accounts.pop(user_ids.pop(user_id, None)
+   , None)
+    pending_d pending_deposits.popeposits.pop(user_id(user_id, None, None)
+    pending)
+    pending_withdraws.pop(user_withdraws.pop(user_id, None)
+    pending_id, None)
+    pending_deletes.pop(user_id,_deletes.pop(user_id, None)
+
+def send_manual None)
+
+def send_manual_reply(message,_reply(message, user_id user_id):
     try:
-        bot.send_message(int(user_id), f"📩 رسالة من الإدارة:\n{message.text}", reply_markup=main_menu(int(user_id)))
-        bot.send_message(ADMIN_ID, "✅ تم إرسال الرد للمستخدم.")
+):
+    try:
+        bot.send_message(int(user        bot.send_message(int(user_id), f"📩_id), f"📩 رسالة من الإدارة:\ رسالة من الإدارةn{message.text}", reply:\n{message.text_markup=}", reply_markup=main_menu(int(user_id)))
+main_menu(int(user_id)))
+        bot.send_message(AD        bot.send_message(ADMIN_ID, "MIN_ID, "✅ تم✅ تم إرسال ال إرسال الردرد للم للمستخدم.")
     except Exception as e:
-        bot.send_message(ADMIN_ID, f"⚠️ خطأ أثناء إرسال الرسالة للمستخدم: {e}")
+        bot.send_message(ADMIN_ID, f"⚠️ خطأ أثناء إرسستخدم.")
+    except Exception as e:
+        bot.send_message(ADMIN_ID, f"⚠️ خطأ أثناء إرسال الرسالة للمستخدم:ال الرسالة للمستخدم: {e}")
 
-# ====== رسالة جماعية ======
-@bot.message_handler(commands=['broadcast'])
+# = {e}")
+
+#===== رسالة جم ====== رسالة جماعية ======
+@اعية ======
+@bot.message_handler(commands=['broadcastbot.message_handler(commands=['broadcast'])
 def broadcast_message(message):
-    if message.chat.id != ADMIN_ID:
+    if message.ch'])
+def broadcast_message(message):
+    ifat.id != ADMIN_ID:
         return
-    msg = bot.send_message(message.chat.id, "📝 أرسل الرسالة الجماعية التي تريد إرسالها لجميع المستخدمين:")
-    bot.register_next_step_handler(msg, send_broadcast)
+    msg = message.chat.id != ADMIN_ID:
+        return
+    msg = bot.send_message(message.ch bot.send_message(message.chat.idat.id, "📝, "📝 أ أرسل الرسالةرسل الرسالة الجماعية الجماعية التي تريد التي تريد إرس إرسالها لجميعالها لجميع المستخدمين:")
+    bot المستخدمين:")
+    bot.register_next_step_handler(msg.register_next_step_handler(msg, send_broadcast)
+
+def, send_broadcast send_broadcast(message)
 
 def send_broadcast(message):
+    data = load):
     data = load_data()
-    user_ids = list(data["user_accounts"].keys())
+_data()
+    user_ids = list(data    user_ids = list(data["user_accounts"].keys())
+["user_accounts"].keys())
     count = 0
-    for user_id in user_ids:
+       count = 0
+    for user_id in user_ids for user_id in user_ids:
         try:
-            bot.send_message(int(user_id), f"📢 رسالة جماعية:\n{message.text}")
+            bot:
+        try:
+           .send_message(int(user_id), bot.send_message(int(user_id), f"📢 f"📢 رسالة جماعية:\n رسالة جماعية:\n{message.text}")
+            count{message.text}")
             count += 1
+        += 1
         except:
+            except:
             continue
-    bot.send_message(ADMIN_ID, f"✅ تم إرسال الرسالة إلى {count} مستخدمين.")
+    bot.send_message continue
+    bot.send_message(ADMIN_ID, f(ADMIN_ID, f"✅ تم إ"✅ تم إرسال الرسالةرسال الرسالة إلى {count إلى {count} مستخدم} مستخدمين.")
+
+ين.")
 
 # ====== Webhook Flask ======
-@app.route('/' + BOT_TOKEN, methods=['POST'])
+@app.route('/'# ====== Webhook Flask ======
+@app.route('/' + BOT + BOT_TOKEN, methods_TOKEN, methods=['POST=['POST'])
+def'])
 def webhook():
+    webhook():
     try:
-        json_str = request.stream.read().decode('utf-8')
-        update = telebot.types.Update.de_json(json_str)
+ try:
+        json_str =        json_str = request.stream request.stream.read().decode.read().decode('utf-8')
+        update('utf-8')
+        update = = telebot.types telebot.types.Update.de_json(json.Update.de_json(json_str)
+        bot.process_new_updates_str)
         bot.process_new_updates([update])
+([update])
     except Exception as e:
-        print("Webhook error:", e)
-    return '', 200
+        print    except Exception as e:
+        print("Webhook error:", e("Webhook error:", e)
+    return '',)
+    return '', 200 200
+
+@app.route('/')
+def index():
+
 
 @app.route('/')
 def index():
     try:
-        bot.remove_webhook()
+    try:
+        bot.remove        bot.remove_webhook()
+    except:
+        pass
+    try_webhook()
     except:
         pass
     try:
+       :
         bot.set_webhook(url=RENDER_URL + '/' + BOT_TOKEN)
+    except Exception as bot.set_webhook(url=RENDER_URL + '/' + BOT_TOKEN)
     except Exception as e:
-        print("Webhook set error:", e)
-    return "Webhook Set!"
+        print("Web e:
+        print("Webhook set error:",hook set error:", e)
+ e)
+    return "Web    return "Webhook Set!"
 
-if __name__ == "__main__":
-    PORT = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=PORT)
+if __name__hook Set!"
+
+if __name == "__main__":
+   __ == "__main__":
+    PORT = int(os.environ PORT = int(os.environ.get("PORT",.get("PORT", 100 10000))
+    app00))
+    app.run(host="0..run(host="0.0.0.0",0.0.0", port=PORT)
