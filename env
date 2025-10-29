@@ -1,0 +1,5 @@
+# توكن البوت من BotFather
+BOT_TOKEN=8317743306:AAFGH1Acxb6fIwZ0o0T2RvNjezQFW8KWcw8
+
+# رابط الاتصال من Supabase (يلي جبته)
+DATABASE_URL=postgres://postgres.apbkobhfnmcqqzqeeqss:[qwe12345qwe]@aws-0-[REGION].pooler.supabase.com:5432/postgres
