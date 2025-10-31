@@ -1,6 +1,7 @@
 import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+import os
 
 # إعداد البوت
 logging.basicConfig(level=logging.INFO)
@@ -8,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN = "8317743306:AAHAM9svd23L2mqSfHnPFEsqKY_bavW3kMg"
 ADMIN_ID = 7625893170  # آيدي الإدمن
+PORT = int(os.environ.get('PORT', 8443))
 
 # متغيرات مؤقتة لتخزين بيانات المستخدمين
 user_data = {}
@@ -153,7 +155,11 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     print("🚀 البوت يعمل الآن!")
+    
+    # التشغيل مع PORT
     application.run_polling()
+    
+    print(f"✅ Bot running on port {PORT}")
 
 if __name__ == '__main__':
     main()
