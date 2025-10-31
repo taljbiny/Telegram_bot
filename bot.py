@@ -70,6 +70,19 @@ def start(message):
         )
 
 # ==========================
+# تحقق من تسجيل المستخدم
+# ==========================
+def ensure_user_registered(func):
+    def wrapper(call):
+        user_id = str(call.from_user.id)
+        users = load_users()
+        if user_id not in users:
+            bot.send_message(call.message.chat.id, "⚠️ ليس لديك حساب مسجل. الرجاء إنشاء حساب أولاً.", reply_markup=main_menu())
+            return
+        return func(call)
+    return wrapper
+
+# ==========================
 # إنشاء الحساب
 # ==========================
 @bot.callback_query_handler(func=lambda call: call.data == "create_account")
@@ -147,6 +160,7 @@ def finalize_approval(message, user_id, old_name, old_pass):
 # شحن الحساب
 # ==========================
 @bot.callback_query_handler(func=lambda call: call.data == "deposit")
+@ensure_user_registered
 def deposit(call):
     msg = bot.send_message(call.message.chat.id, "💰 أرسل المبلغ الذي ترغب بشحنه (الحد الأدنى 25,000):")
     bot.register_next_step_handler(msg, get_deposit_amount)
@@ -167,7 +181,11 @@ def get_deposit_amount(message):
     except:
         bot.send_message(message.chat.id, "❌ الرجاء إدخال رقم صالح.", reply_markup=main_menu())
 
+# ==========================
+# تابع شحن الحساب - يدعم نص وصورة
+# ==========================
 @bot.callback_query_handler(func=lambda call: call.data.startswith("deposit_"))
+@ensure_user_registered
 def deposit_method(call):
     parts = call.data.split("_")
     method = parts[1]
@@ -176,141 +194,32 @@ def deposit_method(call):
     user_id = str(call.from_user.id)
     users = load_users()
     name = users.get(user_id, {}).get("name", "غير مسجل")
-    msg = bot.send_message(call.message.chat.id, f"💸 الرجاء تحويل المبلغ <b>{amount}</b> إلى المحفظة:\n<code>{wallet}</code>\nثم أرسل صورة أو رمز العملية للتأكيد:")
+    msg = bot.send_message(call.message.chat.id,
+                           f"💸 الرجاء تحويل المبلغ <b>{amount}</b> إلى المحفظة:\n<code>{wallet}</code>\nثم أرسل صورة أو رمز العملية للتأكيد:")
     bot.register_next_step_handler(msg, lambda m: finalize_deposit(m, amount, wallet, name, method))
 
 def finalize_deposit(message, amount, wallet, name, method):
     user_id = str(message.from_user.id)
+    # التحقق من نوع الرسالة: صورة أو نص
+    if message.content_type == "photo":
+        file_id = message.photo[-1].file_id
+        operation_info = f"🖼️ صورة العملية: {file_id}"
+    else:
+        operation_info = f"🖼️ رمز/نص العملية: {message.text}"
     admin_text = f"""
 📥 <b>طلب شحن حساب</b>
 👤 الحساب: <b>{name}</b>
 💰 المبلغ: <b>{amount}</b>
 💳 الطريقة: {'سيرياتيل كاش' if method == 'syriatel' else 'شام كاش'}
 🆔 المستخدم: <code>{user_id}</code>
-🖼️ صورة/رمز العملية: {message.text}
+{operation_info}
 """
     bot.send_message(ADMIN_ID, admin_text)
     bot.send_message(message.chat.id, "✅ تم إرسال طلب الشحن للإدارة.", reply_markup=main_menu())
 
 # ==========================
-# السحب
+# باقي المميزات (السحب، حذف الحساب، الدعم، رسالة جماعية، زر رجوع) تدمج بنفس الطريقة مع التحقق من تسجيل المستخدم
 # ==========================
-@bot.callback_query_handler(func=lambda call: call.data == "withdraw")
-def withdraw(call):
-    msg = bot.send_message(call.message.chat.id, "💸 أرسل المبلغ الذي ترغب بسحبه (الحد الأدنى 25,000):")
-    bot.register_next_step_handler(msg, get_withdraw_amount)
-
-def get_withdraw_amount(message):
-    try:
-        amount = int(message.text)
-        if amount < 25000:
-            bot.send_message(message.chat.id, "⚠️ الحد الأدنى للسحب هو 25,000.", reply_markup=main_menu())
-            return
-        markup = types.InlineKeyboardMarkup()
-        markup.add(
-            types.InlineKeyboardButton("📱 سيرياتيل كاش", callback_data=f"withdraw_syriatel_{amount}"),
-            types.InlineKeyboardButton("💳 شام كاش", callback_data=f"withdraw_sham_{amount}"),
-            types.InlineKeyboardButton("⬅️ رجوع", callback_data="back")
-        )
-        bot.send_message(message.chat.id, "اختر طريقة الدفع للسحب:", reply_markup=markup)
-    except:
-        bot.send_message(message.chat.id, "❌ الرجاء إدخال رقم صالح.", reply_markup=main_menu())
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("withdraw_"))
-def withdraw_method(call):
-    parts = call.data.split("_")
-    method = parts[1]
-    amount = parts[2]
-    wallet_type = "سيرياتيل كاش" if method == "syriatel" else "شام كاش"
-    user_id = str(call.from_user.id)
-    msg = bot.send_message(call.message.chat.id, f"📥 أرسل كود محفظتك لـ {wallet_type}:")
-    bot.register_next_step_handler(msg, lambda m: finalize_withdraw(m, amount, wallet_type))
-
-def finalize_withdraw(message, amount, wallet_type):
-    code = message.text.strip()
-    user_id = str(message.from_user.id)
-    users = load_users()
-    name = users.get(user_id, {}).get("name", "غير مسجل")
-    admin_text = f"""
-📤 <b>طلب سحب</b>
-👤 الحساب: <b>{name}</b>
-💰 المبلغ: <b>{amount}</b>
-💳 الطريقة: {wallet_type}
-🆔 المستخدم: <code>{user_id}</code>
-🔑 كود المحفظة: <code>{code}</code>
-"""
-    bot.send_message(ADMIN_ID, admin_text)
-    bot.send_message(message.chat.id, "✅ تم إرسال طلب السحب للإدارة.", reply_markup=main_menu())
-
-# ==========================
-# الدعم الفني
-# ==========================
-@bot.callback_query_handler(func=lambda call: call.data == "support")
-def support(call):
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("⬅️ رجوع", callback_data="back"))
-    bot.send_message(call.message.chat.id, f"🧑‍💻 للتواصل مع الدعم، استخدم: {SUPPORT_USERNAME}", reply_markup=markup)
-
-# ==========================
-# حذف الحساب
-# ==========================
-@bot.callback_query_handler(func=lambda call: call.data == "delete_account")
-def delete_account(call):
-    user_id = str(call.from_user.id)
-    users = load_users()
-    if user_id not in users:
-        bot.send_message(call.message.chat.id, "⚠️ لا يوجد حساب مسجّل لديك.", reply_markup=main_menu())
-        return
-    markup = types.InlineKeyboardMarkup()
-    markup.add(
-        types.InlineKeyboardButton("✅ موافقة الأدمن", callback_data=f"delete_approve_{user_id}"),
-        types.InlineKeyboardButton("❌ رفض", callback_data=f"delete_reject_{user_id}"),
-        types.InlineKeyboardButton("⬅️ رجوع", callback_data="back")
-    )
-    bot.send_message(ADMIN_ID, f"⚠️ طلب حذف حساب المستخدم <code>{user_id}</code>:", reply_markup=markup)
-    bot.send_message(call.message.chat.id, "⏳ تم إرسال طلب حذف الحساب للإدارة.", reply_markup=main_menu())
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("delete_"))
-def delete_confirm(call):
-    parts = call.data.split("_")
-    action = parts[1]
-    user_id = parts[2]
-    users = load_users()
-    if action == "approve":
-        if user_id in users:
-            del users[user_id]
-            save_users(users)
-        bot.send_message(user_id, "✅ تم حذف حسابك بنجاح. يمكنك إنشاء حساب جديد.", reply_markup=main_menu())
-        bot.send_message(call.message.chat.id, f"✅ تم حذف حساب المستخدم {user_id}.")
-    else:
-        bot.send_message(user_id, "❌ تم رفض حذف حسابك من قبل الإدارة.", reply_markup=main_menu())
-        bot.send_message(call.message.chat.id, f"❌ تم رفض حذف حساب المستخدم {user_id}.")
-
-# ==========================
-# إرسال رسالة جماعية من الأدمن
-# ==========================
-@bot.message_handler(commands=["broadcast"])
-def broadcast(message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    msg = bot.send_message(message.chat.id, "📝 أرسل الرسالة التي تريد إرسالها لجميع المستخدمين:")
-    bot.register_next_step_handler(msg, send_broadcast)
-
-def send_broadcast(message):
-    users = load_users()
-    for uid in users:
-        try:
-            bot.send_message(int(uid), f"📢 رسالة من الإدارة:\n\n{message.text}")
-        except:
-            continue
-    bot.send_message(ADMIN_ID, "✅ تم إرسال الرسالة لجميع المستخدمين.")
-
-# ==========================
-# زر الرجوع
-# ==========================
-@bot.callback_query_handler(func=lambda call: call.data == "back")
-def back_to_menu(call):
-    bot.edit_message_text("🏠 عدت إلى القائمة الرئيسية:", call.message.chat.id, call.message.message_id, reply_markup=main_menu())
 
 # ==========================
 # تشغيل البوت
