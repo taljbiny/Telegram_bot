@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = "8317743306:AAHAM9+svd23L2mqSfHnPFEsqKY_bavW+3kMg"
+BOT_TOKEN = "8317743306:AAHAM9svd23L2mqSfHnPFEsqKY_bavW3kMg"
 ADMIN_ID = 7625893170  # آيدي الإدمن
 
 # متغيرات مؤقتة لتخزين بيانات المستخدمين
