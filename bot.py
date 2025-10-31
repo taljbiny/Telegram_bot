@@ -40,7 +40,7 @@ def main_menu():
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton("🧾 إنشاء حساب", callback_data="create_account"),
-        types.InlineKeyboardButton("💰 إيداع", callback_data="deposit"),
+        types.InlineKeyboardButton("💰 شحن الحساب", callback_data="deposit"),
         types.InlineKeyboardButton("💸 سحب", callback_data="withdraw"),
         types.InlineKeyboardButton("🧑‍💻 دعم فني", callback_data="support"),
         types.InlineKeyboardButton("🗑️ حذف الحساب", callback_data="delete_account")
@@ -111,7 +111,7 @@ def confirm_account(name_msg, pass_msg, name):
     bot.send_message(user_id, "⏳ تم إرسال طلبك إلى الإدارة، الرجاء الانتظار للمراجعة.", reply_markup=main_menu())
 
 # ==========================
-# موافقة/رفض الأدمن
+# موافقة/رفض الأدمن لإنشاء الحساب
 # ==========================
 @bot.callback_query_handler(func=lambda call: call.data.startswith("approve_") or call.data.startswith("reject_"))
 def handle_admin_decision(call):
@@ -144,18 +144,18 @@ def finalize_approval(message, user_id, old_name, old_pass):
     bot.send_message(message.chat.id, f"✅ تم إنشاء الحساب للمستخدم {user_id} بنجاح.")
 
 # ==========================
-# الإيداع
+# شحن الحساب
 # ==========================
 @bot.callback_query_handler(func=lambda call: call.data == "deposit")
 def deposit(call):
-    msg = bot.send_message(call.message.chat.id, "💰 أرسل المبلغ الذي ترغب بإيداعه (الحد الأدنى 25,000):")
+    msg = bot.send_message(call.message.chat.id, "💰 أرسل المبلغ الذي ترغب بشحنه (الحد الأدنى 25,000):")
     bot.register_next_step_handler(msg, get_deposit_amount)
 
 def get_deposit_amount(message):
     try:
         amount = int(message.text)
         if amount < 25000:
-            bot.send_message(message.chat.id, "⚠️ الحد الأدنى للإيداع هو 25,000.", reply_markup=main_menu())
+            bot.send_message(message.chat.id, "⚠️ الحد الأدنى للشحن هو 25,000.", reply_markup=main_menu())
             return
         markup = types.InlineKeyboardMarkup()
         markup.add(
@@ -176,17 +176,21 @@ def deposit_method(call):
     user_id = str(call.from_user.id)
     users = load_users()
     name = users.get(user_id, {}).get("name", "غير مسجل")
-    # عرض الكود للنسخ
-    text = f"💸 الرجاء تحويل المبلغ <b>{amount}</b> إلى المحفظة:\n<code>{wallet}</code>"
-    bot.send_message(call.message.chat.id, text)
+    msg = bot.send_message(call.message.chat.id, f"💸 الرجاء تحويل المبلغ <b>{amount}</b> إلى المحفظة:\n<code>{wallet}</code>\nثم أرسل صورة أو رمز العملية للتأكيد:")
+    bot.register_next_step_handler(msg, lambda m: finalize_deposit(m, amount, wallet, name, method))
+
+def finalize_deposit(message, amount, wallet, name, method):
+    user_id = str(message.from_user.id)
     admin_text = f"""
-📥 <b>طلب إيداع جديد</b>
+📥 <b>طلب شحن حساب</b>
 👤 الحساب: <b>{name}</b>
 💰 المبلغ: <b>{amount}</b>
 💳 الطريقة: {'سيرياتيل كاش' if method == 'syriatel' else 'شام كاش'}
 🆔 المستخدم: <code>{user_id}</code>
+🖼️ صورة/رمز العملية: {message.text}
 """
     bot.send_message(ADMIN_ID, admin_text)
+    bot.send_message(message.chat.id, "✅ تم إرسال طلب الشحن للإدارة.", reply_markup=main_menu())
 
 # ==========================
 # السحب
@@ -227,9 +231,8 @@ def finalize_withdraw(message, amount, wallet_type):
     user_id = str(message.from_user.id)
     users = load_users()
     name = users.get(user_id, {}).get("name", "غير مسجل")
-    bot.send_message(message.chat.id, "⏳ تم إرسال طلب السحب للإدارة، الرجاء الانتظار.", reply_markup=main_menu())
     admin_text = f"""
-📤 <b>طلب سحب جديد</b>
+📤 <b>طلب سحب</b>
 👤 الحساب: <b>{name}</b>
 💰 المبلغ: <b>{amount}</b>
 💳 الطريقة: {wallet_type}
@@ -237,6 +240,7 @@ def finalize_withdraw(message, amount, wallet_type):
 🔑 كود المحفظة: <code>{code}</code>
 """
     bot.send_message(ADMIN_ID, admin_text)
+    bot.send_message(message.chat.id, "✅ تم إرسال طلب السحب للإدارة.", reply_markup=main_menu())
 
 # ==========================
 # الدعم الفني
@@ -244,9 +248,7 @@ def finalize_withdraw(message, amount, wallet_type):
 @bot.callback_query_handler(func=lambda call: call.data == "support")
 def support(call):
     markup = types.InlineKeyboardMarkup()
-    markup.add(
-        types.InlineKeyboardButton("⬅️ رجوع", callback_data="back")
-    )
+    markup.add(types.InlineKeyboardButton("⬅️ رجوع", callback_data="back"))
     bot.send_message(call.message.chat.id, f"🧑‍💻 للتواصل مع الدعم، استخدم: {SUPPORT_USERNAME}", reply_markup=markup)
 
 # ==========================
@@ -265,7 +267,8 @@ def delete_account(call):
         types.InlineKeyboardButton("❌ رفض", callback_data=f"delete_reject_{user_id}"),
         types.InlineKeyboardButton("⬅️ رجوع", callback_data="back")
     )
-    bot.send_message(call.message.chat.id, "⚠️ سيتم حذف حسابك بموافقة الأدمن:", reply_markup=markup)
+    bot.send_message(ADMIN_ID, f"⚠️ طلب حذف حساب المستخدم <code>{user_id}</code>:", reply_markup=markup)
+    bot.send_message(call.message.chat.id, "⏳ تم إرسال طلب حذف الحساب للإدارة.", reply_markup=main_menu())
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("delete_"))
 def delete_confirm(call):
@@ -277,10 +280,30 @@ def delete_confirm(call):
         if user_id in users:
             del users[user_id]
             save_users(users)
-        bot.send_message(user_id, "🗑️ تم حذف حسابك بنجاح.", reply_markup=main_menu())
-        bot.send_message(call.message.chat.id, "✅ تم حذف الحساب.")
+        bot.send_message(user_id, "✅ تم حذف حسابك بنجاح. يمكنك إنشاء حساب جديد.", reply_markup=main_menu())
+        bot.send_message(call.message.chat.id, f"✅ تم حذف حساب المستخدم {user_id}.")
     else:
-        bot.send_message(user_id, "❌ تم رفض حذف حسابك من قبل الأدمن.", reply_markup=main_menu())
+        bot.send_message(user_id, "❌ تم رفض حذف حسابك من قبل الإدارة.", reply_markup=main_menu())
+        bot.send_message(call.message.chat.id, f"❌ تم رفض حذف حساب المستخدم {user_id}.")
+
+# ==========================
+# إرسال رسالة جماعية من الأدمن
+# ==========================
+@bot.message_handler(commands=["broadcast"])
+def broadcast(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    msg = bot.send_message(message.chat.id, "📝 أرسل الرسالة التي تريد إرسالها لجميع المستخدمين:")
+    bot.register_next_step_handler(msg, send_broadcast)
+
+def send_broadcast(message):
+    users = load_users()
+    for uid in users:
+        try:
+            bot.send_message(int(uid), f"📢 رسالة من الإدارة:\n\n{message.text}")
+        except:
+            continue
+    bot.send_message(ADMIN_ID, "✅ تم إرسال الرسالة لجميع المستخدمين.")
 
 # ==========================
 # زر الرجوع
