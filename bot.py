@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = "8317743306:AAHAM9svd23L2mqSfHnPFEsqKY_bavW3kMg"
+BOT_TOKEN = "8317743306:AAHAM9+svd23L2mqSfHnPFEsqKY_bavW+3kMg"
 ADMIN_ID = 7625893170  # آيدي الإدمن
 
 # متغيرات مؤقتة لتخزين بيانات المستخدمين
@@ -16,20 +16,21 @@ user_data = {}
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     welcome_text = f"""
-🎯 **مرحباً {user.first_name}!**
+🎯 مرحباً {user.first_name}!
 
-أهلاً بك في [55Bets](https://www.55bets.net) ⚡
+أهلاً بك في 55Bets ⚡
+🌐 الموقع: 55bets.net
 
-📋 **الخدمات المتاحة:**
+📋 الخدمات المتاحة:
 /register - إنشاء حساب جديد
 /deposit - شحن الرصيد  
 /withdraw - سحب الرصيد
 /support - التواصل مع الدعم
 /delete_account - حذف الحساب
 
-**نتمنى لك ربحاً وفيراً! 🎰**
+نتمنى لك ربحاً وفيراً! 🎰
     """
-    await update.message.reply_text(welcome_text, parse_mode='Markdown')
+    await update.message.reply_text(welcome_text)
 
 # أمر /register - بدء عملية التسجيل
 async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -37,8 +38,8 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data[user_id] = {'step': 'awaiting_name'}
     
     await update.message.reply_text(
-        "📝 **إنشاء حساب جديد**\n\n"
-        "أرسل لي **الاسم الكامل** الذي تريد استخدامه للحساب:"
+        "📝 إنشاء حساب جديد\n\n"
+        "أرسل لي الاسم الكامل الذي تريد استخدامه للحساب:"
     )
 
 # معالجة الرسائل (لجمع البيانات)
@@ -55,8 +56,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_data[user_id]['step'] = 'awaiting_password'
             
             await update.message.reply_text(
-                "🔐 **حسناً!**\n"
-                "الآن أرسل **كلمة السر** التي تريد استخدامها:"
+                "🔐 حسناً!\n"
+                "الآن أرسل كلمة السر التي تريد استخدامها:"
             )
             
         elif current_step == 'awaiting_password':
@@ -66,16 +67,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # إرسال الطلب للإدمن
             request_text = f"""
-📋 **طلب إنشاء حساب جديد**
+📋 طلب إنشاء حساب جديد
 
-👤 **المستخدم:** {update.effective_user.first_name} (@{update.effective_user.username})
-🆔 **آيدي:** {user_id}
+👤 المستخدم: {update.effective_user.first_name} (@{update.effective_user.username})
+🆔 آيدي: {user_id}
 
-📝 **بيانات الحساب:**
+📝 بيانات الحساب:
 • الاسم: {user_data[user_id]['name']}
 • كلمة السر: {user_data[user_id]['password']}
 
-⏰ **الوقت:** {update.message.date}
+⏰ الوقت: {update.message.date}
             """
             
             # إرسال للإدمن
@@ -86,7 +87,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # تأكيد للمستخدم
             await update.message.reply_text(
-                "✅ **تم إرسال طلبك بنجاح!**\n\n"
+                "✅ تم إرسال طلبك بنجاح!\n\n"
                 "سيتم مراجعة طلبك من قبل الإدمن وسنخبرك عند الموافقة.\n"
                 "شكراً لثقتك بنا! 🌟"
             )
@@ -96,15 +97,45 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # أمر /support
 async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    support_text = f"""
-🆘 **الدعم الفني**
+    support_text = """
+🆘 الدعم الفني
 
 للتواصل مع الإدمن مباشرة:
-@{ADMIN_USERNAME}
+@trajibiny
 
-📞 **سيتم الرد عليك في أقرب وقت**
+📞 سيتم الرد عليك في أقرب وقت
     """
     await update.message.reply_text(support_text)
+
+# أمر /deposit
+async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    deposit_text = """
+💳 طلب شحن رصيد
+
+سيتم إضافة هذه الخدمة قريباً!
+تابع التحديثات 👋
+    """
+    await update.message.reply_text(deposit_text)
+
+# أمر /withdraw
+async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    withdraw_text = """
+💰 طلب سحب رصيد
+
+سيتم إضافة هذه الخدمة قريباً!
+تابع التحديثات 👋
+    """
+    await update.message.reply_text(withdraw_text)
+
+# أمر /delete_account
+async def delete_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    delete_text = """
+🗑 حذف الحساب
+
+سيتم إضافة هذه الخدمة قريباً!
+تابع التحديثات 👋
+    """
+    await update.message.reply_text(delete_text)
 
 # التشغيل الرئيسي
 def main():
@@ -114,6 +145,9 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("register", register))
     application.add_handler(CommandHandler("support", support))
+    application.add_handler(CommandHandler("deposit", deposit))
+    application.add_handler(CommandHandler("withdraw", withdraw))
+    application.add_handler(CommandHandler("delete_account", delete_account))
     
     # معالجة الرسائل العادية
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
