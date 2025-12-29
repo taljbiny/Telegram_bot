@@ -1,6 +1,6 @@
 from telebot import types
+from config import ADMINS
 from database import get_connection
-from config import ADMINS, WITHDRAW_COMMISSION
 
 def admin_handlers(bot):
 
@@ -17,5 +17,3 @@ def admin_handlers(bot):
             types.InlineKeyboardButton("🛠 الرد على الدعم", callback_data="support_admin")
         )
         bot.send_message(message.chat.id, "لوحة تحكم الأدمن:", reply_markup=kb)
-
-    # يمكن إضافة باقي وظائف البحث والمراجعة والرد على الدعم هنا
