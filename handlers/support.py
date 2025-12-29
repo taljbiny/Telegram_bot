@@ -1,6 +1,6 @@
+from database import get_connection
+
 def support_handlers(bot):
 
-    @bot.message_handler(func=lambda m: m.text or "")
-    def support_message(message):
-        # هنا يمكنك توجيه الرسائل للدعم أو الأدمن
-        pass
+    # يمكن إضافة وظائف متابعة طلبات الدعم، الرد من الأدمن، وتحديث الحالة
+    pass
