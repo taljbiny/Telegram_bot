@@ -3,8 +3,7 @@ from telebot import types
 from flask import Flask
 import threading
 from config import TOKEN, ADMINS
-from database import init_db, get_connection
-
+from database import init_db
 from handlers.user import user_handlers
 from handlers.admin_panel import admin_handlers
 from handlers.support import support_handlers
