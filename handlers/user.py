@@ -7,8 +7,7 @@ def user_handlers(bot):
     def start(message):
         conn = get_connection()
         cur = conn.cursor()
-
-        # إضافة المستخدم إذا جديد
+        # إضافة المستخدم الجديد
         cur.execute(
             "INSERT OR IGNORE INTO users (telegram_id, username) VALUES (?, ?)",
             (message.from_user.id, message.from_user.username)
@@ -16,40 +15,37 @@ def user_handlers(bot):
         conn.commit()
         conn.close()
 
-        kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        kb.add("➕ إيداع", "➖ سحب")
-        kb.add("💰 رصيدي")
-        kb.add("📝 سجل المعاملات")
-
-        bot.send_message(
-            message.chat.id,
-            "أهلاً بك 👋\nاختر من القائمة:",
-            reply_markup=kb
+        kb = types.InlineKeyboardMarkup(row_width=2)
+        kb.add(
+            types.InlineKeyboardButton("➕ إنشاء حساب", callback_data="create_account"),
+            types.InlineKeyboardButton("💰 شحن", callback_data="deposit"),
+            types.InlineKeyboardButton("➖ سحب", callback_data="withdraw")
+        )
+        kb.add(
+            types.InlineKeyboardButton("💵 شحن البوت", callback_data="bot_deposit"),
+            types.InlineKeyboardButton("💸 سحب من البوت", callback_data="bot_withdraw"),
+            types.InlineKeyboardButton("🛠 الدعم", callback_data="support")
         )
 
-    # رصيد المستخدم
-    @bot.message_handler(func=lambda m: m.text == "💰 رصيدي")
-    def balance(message):
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT balance FROM users WHERE telegram_id=?", (message.from_user.id,))
-        result = cur.fetchone()
-        conn.close()
-        balance = result[0] if result else 0
-        bot.send_message(message.chat.id, f"رصيدك الحالي: {balance} وحدة")
+        bot.send_message(message.chat.id, "أهلاً بك 👋\nاختر من الخيارات:", reply_markup=kb)
 
-    # سجل المعاملات
-    @bot.message_handler(func=lambda m: m.text == "📝 سجل المعاملات")
-    def transactions(message):
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT type, method, amount, status, created_at FROM transactions WHERE user_id=? ORDER BY id DESC LIMIT 10", (message.from_user.id,))
-        rows = cur.fetchall()
-        conn.close()
-        if not rows:
-            bot.send_message(message.chat.id, "لا توجد معاملات بعد.")
-        else:
-            text = ""
-            for r in rows:
-                text += f"{r[0]} {r[1]} {r[2]} | {r[3]} | {r[4]}\n"
-            bot.send_message(message.chat.id, text)
+    @bot.callback_query_handler(func=lambda call: True)
+    def callback_handler(call):
+        if call.data == "create_account":
+            bot.answer_callback_query(call.id, "ميزة إنشاء الحساب")
+            bot.send_message(call.message.chat.id, "⚡ تم اختيار إنشاء حساب")
+        elif call.data == "deposit":
+            bot.answer_callback_query(call.id, "ميزة الشحن")
+            bot.send_message(call.message.chat.id, "💰 اختر طريقة الشحن: سيرياتيل / شام")
+        elif call.data == "withdraw":
+            bot.answer_callback_query(call.id, "ميزة السحب")
+            bot.send_message(call.message.chat.id, "➖ اختر المبلغ للسحب")
+        elif call.data == "bot_deposit":
+            bot.answer_callback_query(call.id, "شحن البوت")
+            bot.send_message(call.message.chat.id, "💵 شحن رصيد البوت")
+        elif call.data == "bot_withdraw":
+            bot.answer_callback_query(call.id, "سحب من البوت")
+            bot.send_message(call.message.chat.id, "💸 سحب رصيد من البوت")
+        elif call.data == "support":
+            bot.answer_callback_query(call.id, "الدعم")
+            bot.send_message(call.message.chat.id, "🛠 للتواصل مع الدعم يرجى إرسال رسالة هنا")
