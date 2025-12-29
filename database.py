@@ -1,5 +1,4 @@
-import sqlite3
-import os
+import sqlite3, os
 
 DB_PATH = "database/data.db"
 
@@ -40,7 +39,7 @@ def init_db():
     )
     """)
 
-    # جدول طلبات الدعم / إنشاء الحساب
+    # جدول طلبات الدعم
     cur.execute("""
     CREATE TABLE IF NOT EXISTS support_requests (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
