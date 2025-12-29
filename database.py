@@ -11,6 +11,7 @@ def init_db():
     conn = get_connection()
     cur = conn.cursor()
 
+    # جدول المستخدمين
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
         telegram_id INTEGER PRIMARY KEY,
@@ -22,6 +23,7 @@ def init_db():
     )
     """)
 
+    # جدول المعاملات
     cur.execute("""
     CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
