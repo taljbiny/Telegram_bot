@@ -17,6 +17,7 @@ def init_db():
         telegram_id INTEGER PRIMARY KEY,
         username TEXT,
         account_name TEXT,
+        password TEXT,
         balance REAL DEFAULT 0,
         status TEXT DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -32,7 +33,20 @@ def init_db():
         method TEXT,
         amount REAL,
         status TEXT,
+        canceled INTEGER DEFAULT 0,
         proof TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # جدول طلبات الدعم / إنشاء الحساب
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS support_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        message TEXT,
+        contact_shared INTEGER DEFAULT 0,
+        replied INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
