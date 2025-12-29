@@ -32,9 +32,10 @@ def init_db():
         type TEXT,
         method TEXT,
         amount REAL,
+        commission REAL DEFAULT 0,
         status TEXT,
-        canceled INTEGER DEFAULT 0,
         proof TEXT,
+        canceled INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
