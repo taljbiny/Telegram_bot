@@ -2,7 +2,7 @@ from telebot import types
 from database import get_connection
 from config import ADMINS, MIN_DEPOSIT, MIN_WITHDRAW, WITHDRAW_COMMISSION, SYRIATEL_NUMBER, SHAM_NUMBER
 
-active_process = {}  # لتتبع خطوات العملية لكل مستخدم
+active_process = {}  # تتبع العمليات لكل مستخدم
 
 def user_handlers(bot):
 
@@ -28,13 +28,14 @@ def user_handlers(bot):
             types.InlineKeyboardButton("🛠 الدعم", callback_data="support")
         )
 
-        # أزرار سفلية ثابتة للمستخدم (3 شخوط أسفل اليمين)
+        # أزرار سفلية تتحول لأوامر حقيقية
         reply_kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
         reply_kb.add("تشغيل البوت", "عرض الرصيد", "المساعدة / الاتصال بالدعم")
 
         bot.send_message(message.chat.id, "أهلاً بك 👋\nاختر من الخيارات:", reply_markup=kb)
-        bot.send_message(message.chat.id, "أزرار التشغيل، الرصيد والدعم موجودة أسفل المحادثة.", reply_markup=reply_kb)
+        bot.send_message(message.chat.id, "استخدم الأوامر أسفل المحادثة:", reply_markup=reply_kb)
 
+    # التعامل مع الأزرار
     @bot.callback_query_handler(func=lambda call: True)
     def callback_handler(call):
         user_id = call.from_user.id
@@ -45,7 +46,7 @@ def user_handlers(bot):
         elif call.data == "support":
             start_support(bot, call.message.chat.id, user_id)
 
-# --- وظائف إنشاء الحساب ---
+# --- إنشاء الحساب ---
 def create_account(bot, call):
     user_id = call.from_user.id
     conn = get_connection()
@@ -54,8 +55,7 @@ def create_account(bot, call):
     result = cur.fetchone()
     conn.close()
     if result and result[0]:
-        bot.answer_callback_query(call.id, "لقد أنشأت حساب مسبقاً.")
-        bot.send_message(call.message.chat.id, "⚠️ لديك حساب بالفعل ولا يمكنك إنشاء آخر.")
+        bot.answer_callback_query(call.id, "لديك حساب مسبقاً.")
         return
     bot.answer_callback_query(call.id)
     msg = bot.send_message(call.message.chat.id, "📌 أدخل اسم الحساب:")
@@ -72,8 +72,10 @@ def process_password(message, bot):
     active_process[user_id]["password"] = message.text
     account_name = active_process[user_id]["account_name"]
     password = active_process[user_id]["password"]
+
     # إرسال للأدمن
-    bot.send_message(ADMINS[0], f"🔔 طلب إنشاء حساب جديد\nUser: {message.from_user.username}\nاسم الحساب: {account_name}\nكلمة السر: {password}\nيمكنك الرد على المستخدم عند الضرورة.")
+    bot.send_message(ADMINS[0], f"🔔 طلب إنشاء حساب\nUser: {message.from_user.username}\nاسم الحساب: {account_name}\nكلمة السر: {password}")
+    
     # حفظ البيانات
     conn = get_connection()
     cur = conn.cursor()
@@ -84,7 +86,7 @@ def process_password(message, bot):
     bot.send_message(message.chat.id, "✅ تم إنشاء الحساب بنجاح.")
     del active_process[user_id]
 
-# --- وظائف الدعم ---
+# --- الدعم ---
 def start_support(bot, chat_id, user_id):
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     kb.add(types.KeyboardButton("مشاركة جهة الاتصال", request_contact=True))
@@ -100,17 +102,6 @@ def receive_contact(message, bot):
                     (user_id, 1, "طلب دعم"))
         conn.commit()
         conn.close()
-        bot.send_message(message.chat.id, "✅ تم إرسال جهة الاتصال إلى الدعم، سيتم الرد عليك قريباً.")
+        bot.send_message(message.chat.id, "✅ تم إرسال جهة الاتصال إلى الدعم.")
     else:
-        bot.send_message(message.chat.id, "❌ يجب مشاركة جهة الاتصال لتواصل الدعم.")
-
-# --- بدء أي معاملة (شحن/سحب) ---
-def start_transaction(bot, chat_id, user_id, trans_type):
-    active_process[user_id] = {"step": "choose_wallet", "type": trans_type}
-    kb = types.InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        types.InlineKeyboardButton("سيرياتيل", callback_data="wallet_syriatel"),
-        types.InlineKeyboardButton("شام", callback_data="wallet_sham"),
-        types.InlineKeyboardButton("إلغاء العملية", callback_data="cancel_process")
-    )
-    bot.send_message(chat_id, "اختر المحفظة:", reply_markup=kb)
+        bot.send_message(message.chat.id, "❌ يجب مشاركة جهة الاتصال.")
