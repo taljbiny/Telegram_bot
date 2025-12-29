@@ -8,8 +8,8 @@ import time
 # ==========================
 # إعدادات البوت — عدّل القيم هنا إن لزم
 # ==========================
-TOKEN = "8317743306:AAHAM9svd23L2mqSfHnPFEsqKY_bavW3kMg"
-ADMIN_ID = 7625893170  # ضع هنا آي دي الأدمن الأساسي
+TOKEN = 8167728652:AAHkmA95NJaNle90-X0o2rct8ZoJZS_T8C8
+ADMIN_ID = 5831849688  # ضع هنا آي دي الأدمن الأساسي
 SUPPORT_USERNAME = "@supp_mo"  # اسم حساب الدعم (يظهر للمستخدم)
 SYRIATEL_WALLET = "82492253"
 SHAM_WALLET = "131efe4fbccd83a811282761222eee69"
