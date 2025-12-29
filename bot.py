@@ -1,12 +1,13 @@
 import telebot
+from telebot import types
 from flask import Flask
 import threading
 from config import TOKEN, ADMINS
 from database import init_db, get_connection
 
-# استيراد handlers
-from handlers.user import user_handlers
 from handlers.admin_panel import admin_handlers
+from handlers.user import user_handlers
+from handlers.support import support_handlers
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
@@ -22,9 +23,10 @@ def run_flask():
 # تهيئة قاعدة البيانات
 init_db()
 
-# إضافة جميع Handlers
+# إضافة Handlers
 user_handlers(bot)
 admin_handlers(bot)
+support_handlers(bot)
 
 # تشغيل Flask في Thread منفصل
 threading.Thread(target=run_flask).start()
