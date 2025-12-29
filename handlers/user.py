@@ -1,20 +1,21 @@
 from telebot import types
 from database import get_connection
+from config import ADMINS, MIN_DEPOSIT, MIN_WITHDRAW, WITHDRAW_COMMISSION
+
+active_process = {}  # لتتبع خطوات العملية لكل مستخدم
 
 def user_handlers(bot):
-
-    active_process = {}  # لتتبع خطوات العملية لكل مستخدم
 
     @bot.message_handler(commands=['start'])
     def start(message):
         conn = get_connection()
         cur = conn.cursor()
-
         cur.execute("INSERT OR IGNORE INTO users (telegram_id, username) VALUES (?, ?)",
                     (message.from_user.id, message.from_user.username))
         conn.commit()
         conn.close()
 
+        # أزرار رئيسية للمستخدم
         kb = types.InlineKeyboardMarkup(row_width=2)
         kb.add(
             types.InlineKeyboardButton("➕ إنشاء حساب", callback_data="create_account"),
@@ -26,6 +27,10 @@ def user_handlers(bot):
             types.InlineKeyboardButton("💸 سحب من البوت", callback_data="bot_withdraw"),
             types.InlineKeyboardButton("🛠 الدعم", callback_data="support")
         )
+
+        # أزرار سفلية ثابتة
+        reply_kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        reply_kb.add("تشغيل البوت", "عرض الرصيد", "المساعدة / الاتصال بالدعم")
 
         bot.send_message(message.chat.id, "أهلاً بك 👋\nاختر من الخيارات:", reply_markup=kb)
 
@@ -46,17 +51,8 @@ def user_handlers(bot):
             msg = bot.send_message(call.message.chat.id, "📌 أدخل اسم الحساب:")
             bot.register_next_step_handler(msg, process_account_name)
 
-        elif call.data == "deposit":
-            start_transaction(bot, call.message.chat.id, user_id, "deposit")
-
-        elif call.data == "withdraw":
-            start_transaction(bot, call.message.chat.id, user_id, "withdraw")
-
-        elif call.data == "bot_deposit":
-            start_transaction(bot, call.message.chat.id, user_id, "bot_deposit")
-
-        elif call.data == "bot_withdraw":
-            start_transaction(bot, call.message.chat.id, user_id, "bot_withdraw")
+        elif call.data in ["deposit", "withdraw", "bot_deposit", "bot_withdraw"]:
+            start_transaction(bot, call.message.chat.id, user_id, call.data)
 
         elif call.data == "support":
             msg = bot.send_message(call.message.chat.id,
