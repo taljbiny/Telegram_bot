@@ -2,7 +2,7 @@ import telebot
 from telebot import types
 import sqlite3
 
-# ========= CONFIG =========
+# ================== CONFIG ==================
 TOKEN = "8167728652:AAHkmA95NJaNle90-X0o2rct8ZoJZS_T8C8"
 ADMINS = [5831849688, 8219716285]
 
@@ -12,7 +12,7 @@ WITHDRAW_FEE = 0.05
 
 bot = telebot.TeleBot(TOKEN)
 
-# ========= DATABASE =========
+# ================== DATABASE ==================
 conn = sqlite3.connect("data.db", check_same_thread=False)
 cur = conn.cursor()
 
@@ -24,177 +24,168 @@ CREATE TABLE IF NOT EXISTS users (
     balance INTEGER DEFAULT 0
 )
 """)
-
-cur.execute("""
-CREATE TABLE IF NOT EXISTS deposits (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    telegram_id INTEGER,
-    amount INTEGER,
-    status TEXT
-)
-""")
-
-cur.execute("""
-CREATE TABLE IF NOT EXISTS withdrawals (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    telegram_id INTEGER,
-    amount INTEGER,
-    fee INTEGER,
-    net INTEGER,
-    status TEXT
-)
-""")
-
 conn.commit()
 
-# ========= STATES =========
-user_state = {}
-user_temp = {}
+# ================== STATES ==================
+state = {}
+temp = {}
 
-# ========= KEYBOARDS =========
-def main_menu(uid):
-    kb = types.InlineKeyboardMarkup(row_width=2)
+# ================== KEYBOARDS ==================
+def main_menu():
+    kb = types.InlineKeyboardMarkup()
     kb.add(
         types.InlineKeyboardButton("➕ إنشاء حساب", callback_data="create"),
-        types.InlineKeyboardButton("💰 الرصيد", callback_data="balance"),
-        types.InlineKeyboardButton("💰 إيداع", callback_data="deposit"),
-        types.InlineKeyboardButton("💸 سحب", callback_data="withdraw"),
-        types.InlineKeyboardButton("📞 الدعم", callback_data="support"),
+        types.InlineKeyboardButton("💰 الرصيد", callback_data="balance")
     )
-    if uid in ADMINS:
-        kb.add(types.InlineKeyboardButton("🎛 لوحة الأدمن", callback_data="admin"))
+    kb.add(
+        types.InlineKeyboardButton("📥 إيداع", callback_data="deposit"),
+        types.InlineKeyboardButton("📤 سحب", callback_data="withdraw")
+    )
+    kb.add(types.InlineKeyboardButton("📞 الدعم", callback_data="support"))
     return kb
 
 def admin_menu():
     kb = types.InlineKeyboardMarkup()
     kb.add(
-        types.InlineKeyboardButton("✅ قبول إيداع", callback_data="approve_deposit"),
-        types.InlineKeyboardButton("✅ قبول سحب", callback_data="approve_withdraw"),
+        types.InlineKeyboardButton("👤 كل المستخدمين", callback_data="all_users"),
+        types.InlineKeyboardButton("➕ إضافة رصيد", callback_data="add_balance")
     )
     return kb
 
-# ========= COMMANDS =========
+# ================== COMMANDS ==================
 @bot.message_handler(commands=["start"])
 def start(msg):
-    cur.execute("INSERT OR IGNORE INTO users (telegram_id) VALUES (?)", (msg.chat.id,))
+    uid = msg.chat.id
+    cur.execute("INSERT OR IGNORE INTO users (telegram_id) VALUES (?)", (uid,))
     conn.commit()
-    bot.send_message(msg.chat.id, "👋 أهلاً بك", reply_markup=main_menu(msg.chat.id))
+
+    bot.send_message(
+        uid,
+        "👋 أهلاً بك في محفظة البوت",
+        reply_markup=main_menu()
+    )
 
 @bot.message_handler(commands=["balance"])
-def balance(msg):
-    cur.execute("SELECT balance FROM users WHERE telegram_id=?", (msg.chat.id,))
+def balance_cmd(msg):
+    uid = msg.chat.id
+    cur.execute("SELECT balance FROM users WHERE telegram_id=?", (uid,))
     bal = cur.fetchone()[0]
-    bot.send_message(msg.chat.id, f"💰 رصيدك: {bal}")
+    bot.send_message(uid, f"💰 رصيدك: {bal}")
 
 @bot.message_handler(commands=["help"])
 def help_cmd(msg):
-    bot.send_message(msg.chat.id, "📞 تواصل مع الدعم عبر هذا البوت")
+    state[msg.chat.id] = "support"
+    bot.send_message(msg.chat.id, "📞 اكتب رسالتك للدعم")
 
-# ========= CALLBACKS =========
+# ================== CALLBACKS ==================
 @bot.callback_query_handler(func=lambda c: True)
-def callbacks(c):
-    uid = c.message.chat.id
-    data = c.data
+def callbacks(call):
+    uid = call.message.chat.id
+    data = call.data
 
     if data == "create":
-        user_state[uid] = "account"
-        bot.send_message(uid, "✍️ اكتب اسم الحساب")
+        state[uid] = "account_name"
+        bot.send_message(uid, "✍️ أرسل اسم الحساب")
 
     elif data == "balance":
         cur.execute("SELECT balance FROM users WHERE telegram_id=?", (uid,))
-        bot.send_message(uid, f"💰 رصيدك: {cur.fetchone()[0]}")
+        bal = cur.fetchone()[0]
+        bot.send_message(uid, f"💰 رصيدك: {bal}")
 
     elif data == "deposit":
-        user_state[uid] = "deposit"
-        bot.send_message(uid, f"💰 أدخل مبلغ الإيداع (≥ {MIN_DEPOSIT})")
+        state[uid] = "deposit"
+        bot.send_message(uid, f"💰 أدخل مبلغ الإيداع (الحد الأدنى {MIN_DEPOSIT})")
 
     elif data == "withdraw":
-        user_state[uid] = "withdraw"
-        bot.send_message(uid, f"💸 أدخل مبلغ السحب (≥ {MIN_WITHDRAW})")
+        state[uid] = "withdraw"
+        bot.send_message(uid, f"📤 أدخل مبلغ السحب (الحد الأدنى {MIN_WITHDRAW})")
 
     elif data == "support":
-        bot.send_message(uid, "📞 الدعم سيتواصل معك قريباً")
+        state[uid] = "support"
+        bot.send_message(uid, "📞 اكتب رسالتك للدعم")
 
     elif data == "admin" and uid in ADMINS:
-        bot.send_message(uid, "🎛 لوحة الأدمن", reply_markup=admin_menu())
+        bot.send_message(uid, "🎛 لوحة تحكم الأدمن", reply_markup=admin_menu())
 
-    elif data == "approve_deposit" and uid in ADMINS:
-        cur.execute("SELECT id, telegram_id, amount FROM deposits WHERE status='pending' LIMIT 1")
-        row = cur.fetchone()
-        if not row:
-            bot.send_message(uid, "❌ لا يوجد طلبات")
-            return
-        did, user, amount = row
-        cur.execute("UPDATE users SET balance = balance + ? WHERE telegram_id=?", (amount, user))
-        cur.execute("UPDATE deposits SET status='approved' WHERE id=?", (did,))
-        conn.commit()
-        bot.send_message(user, f"✅ تم قبول الإيداع: {amount}")
-        bot.send_message(uid, "✔️ تم")
+    elif data == "all_users" and uid in ADMINS:
+        cur.execute("SELECT telegram_id, balance FROM users")
+        users = cur.fetchall()
+        txt = "👥 المستخدمين:\n"
+        for u in users:
+            txt += f"ID:{u[0]} | 💰 {u[1]}\n"
+        bot.send_message(uid, txt)
 
-    elif data == "approve_withdraw" and uid in ADMINS:
-        cur.execute("SELECT id, telegram_id, net FROM withdrawals WHERE status='pending' LIMIT 1")
-        row = cur.fetchone()
-        if not row:
-            bot.send_message(uid, "❌ لا يوجد طلبات")
-            return
-        wid, user, net = row
-        cur.execute("UPDATE withdrawals SET status='approved' WHERE id=?", (wid,))
-        conn.commit()
-        bot.send_message(user, f"✅ تم قبول السحب: {net}")
-        bot.send_message(uid, "✔️ تم")
-
-# ========= STEPS =========
-@bot.message_handler(func=lambda m: m.chat.id in user_state)
+# ================== STATES HANDLER ==================
+@bot.message_handler(func=lambda m: m.chat.id in state)
 def steps(msg):
     uid = msg.chat.id
-    step = user_state[uid]
+    step = state[uid]
 
-    if step == "account":
-        user_temp[uid] = msg.text
-        user_state[uid] = "password"
-        bot.send_message(uid, "🔑 اكتب كلمة السر")
+    if step == "account_name":
+        temp[uid] = {"name": msg.text}
+        state[uid] = "password"
+        bot.send_message(uid, "🔑 أرسل كلمة السر")
 
     elif step == "password":
-        cur.execute("UPDATE users SET account_name=?, password=? WHERE telegram_id=?",
-                    (user_temp[uid], msg.text, uid))
+        cur.execute(
+            "UPDATE users SET account_name=?, password=? WHERE telegram_id=?",
+            (temp[uid]["name"], msg.text, uid)
+        )
         conn.commit()
-        user_state.pop(uid)
-        user_temp.pop(uid)
-        bot.send_message(uid, "✅ تم إنشاء الحساب", reply_markup=main_menu(uid))
+
+        for a in ADMINS:
+            bot.send_message(
+                a,
+                f"🆕 حساب جديد\nID:{uid}\nاسم:{temp[uid]['name']}"
+            )
+
+        state.pop(uid)
+        temp.pop(uid)
+        bot.send_message(uid, "✅ تم إنشاء الحساب", reply_markup=main_menu())
 
     elif step == "deposit":
         amount = int(msg.text)
         if amount < MIN_DEPOSIT:
-            bot.send_message(uid, "❌ مبلغ غير صحيح")
+            bot.send_message(uid, "❌ المبلغ أقل من الحد الأدنى")
             return
-        cur.execute("INSERT INTO deposits (telegram_id, amount, status) VALUES (?,?,?)",
-                    (uid, amount, "pending"))
-        conn.commit()
-        user_state.pop(uid)
+
         for a in ADMINS:
-            bot.send_message(a, f"💰 طلب إيداع {amount} من {uid}")
-        bot.send_message(uid, "⏳ بانتظار موافقة الأدمن")
+            bot.send_message(a, f"📥 طلب إيداع\nID:{uid}\n💰 {amount}")
+
+        state.pop(uid)
+        bot.send_message(uid, "⏳ تم إرسال الطلب للإدارة")
 
     elif step == "withdraw":
         amount = int(msg.text)
         if amount < MIN_WITHDRAW:
-            bot.send_message(uid, "❌ مبلغ غير صحيح")
+            bot.send_message(uid, "❌ المبلغ أقل من الحد الأدنى")
             return
+
         fee = int(amount * WITHDRAW_FEE)
         net = amount - fee
-        cur.execute("SELECT balance FROM users WHERE telegram_id=?", (uid,))
-        if cur.fetchone()[0] < amount:
-            bot.send_message(uid, "❌ رصيد غير كافي")
-            return
-        cur.execute("UPDATE users SET balance = balance - ? WHERE telegram_id=?", (amount, uid))
-        cur.execute("INSERT INTO withdrawals (telegram_id, amount, fee, net, status) VALUES (?,?,?,?,?)",
-                    (uid, amount, fee, net, "pending"))
-        conn.commit()
-        user_state.pop(uid)
-        for a in ADMINS:
-            bot.send_message(a, f"💸 طلب سحب {amount} من {uid}")
-        bot.send_message(uid, f"⏳ بانتظار الموافقة\nالعمولة: {fee}\nالصافي: {net}")
 
-# ========= RUN =========
-print("BOT RUNNING")
+        for a in ADMINS:
+            bot.send_message(
+                a,
+                f"📤 طلب سحب\nID:{uid}\nالمبلغ:{amount}\nالعمولة:{fee}\nالصافي:{net}"
+            )
+
+        state.pop(uid)
+        bot.send_message(uid, "⏳ تم إرسال طلب السحب")
+
+    elif step == "support":
+        for a in ADMINS:
+            bot.send_message(a, f"📞 دعم\nID:{uid}\n{msg.text}")
+
+        state.pop(uid)
+        bot.send_message(uid, "✅ تم إرسال رسالتك")
+
+# ================== ADMIN SHORTCUT ==================
+@bot.message_handler(commands=["admin"])
+def admin_cmd(msg):
+    if msg.chat.id in ADMINS:
+        bot.send_message(msg.chat.id, "🎛 لوحة تحكم الأدمن", reply_markup=admin_menu())
+
+# ================== RUN ==================
+print("BOT IS RUNNING")
 bot.infinity_polling()
