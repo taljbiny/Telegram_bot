@@ -1,18 +1,12 @@
 from config import ADMINS
-from database import cursor, conn
 
-support_wait = set()
-
-def register(bot):
-
-    @bot.message_handler(commands=["help"])
-    def help_cmd(message):
-        bot.send_message(message.chat.id, "📞 اكتب رسالتك:")
-        support_wait.add(message.chat.id)
-
-    @bot.message_handler(func=lambda m: m.chat.id in support_wait)
-    def support_msg(message):
+def register_support(bot):
+    @bot.message_handler(content_types=["contact"])
+    def contact_handler(message):
         for admin in ADMINS:
-            bot.send_message(admin, f"📩 دعم من {message.chat.id}:\n{message.text}")
-        bot.send_message(message.chat.id, "✅ تم إرسال رسالتك")
-        support_wait.remove(message.chat.id)
+            bot.send_message(admin,
+                             f"📞 طلب دعم جديد\n"
+                             f"ID: {message.chat.id}\n"
+                             f"الاسم: {message.from_user.first_name}\n"
+                             f"رقم الهاتف: {message.contact.phone_number}")
+        bot.send_message(message.chat.id, "✅ تم إرسال طلبك للدعم")
