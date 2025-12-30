@@ -1,55 +1,46 @@
-import sqlite3, os
+import sqlite3
 
-DB_PATH = "database/data.db"
+conn = sqlite3.connect("database/data.db", check_same_thread=False)
+cursor = conn.cursor()
 
-def get_connection():
-    os.makedirs("database", exist_ok=True)
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
+# المستخدمين
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY,
+    username TEXT,
+    balance REAL DEFAULT 0
+)
+""")
 
-def init_db():
-    conn = get_connection()
-    cur = conn.cursor()
+# الإيداعات
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS deposits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    amount REAL,
+    method TEXT,
+    status TEXT
+)
+""")
 
-    # جدول المستخدمين
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        telegram_id INTEGER PRIMARY KEY,
-        username TEXT,
-        account_name TEXT,
-        password TEXT,
-        balance REAL DEFAULT 0,
-        status TEXT DEFAULT 'active',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
+# السحوبات
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS withdrawals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    amount REAL,
+    wallet TEXT,
+    status TEXT
+)
+""")
 
-    # جدول المعاملات
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS transactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        type TEXT,
-        method TEXT,
-        amount REAL,
-        commission REAL DEFAULT 0,
-        status TEXT,
-        proof TEXT,
-        canceled INTEGER DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
+# الدعم
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS support (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    message TEXT
+)
+""")
 
-    # جدول طلبات الدعم
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS support_requests (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        message TEXT,
-        contact_shared INTEGER DEFAULT 0,
-        replied INTEGER DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    conn.commit()
-    conn.close()
+conn.commit()
