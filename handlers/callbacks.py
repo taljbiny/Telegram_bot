@@ -1,8 +1,7 @@
-from keyboards.main import main_menu
-from keyboards.admin import admin_menu
+from .main import main_menu  # صححت المسار
+from .admin import admin_state
 from database import init_db
 from config import ADMINS
-from handlers.admin import admin_state
 
 conn, cur = init_db()
 user_state = {}
@@ -40,4 +39,5 @@ def register_callbacks(bot):
             bot.send_message(uid, f"💸 أدخل مبلغ السحب (الحد الأدنى 50000)")
 
         elif data == "admin_panel" and uid in ADMINS:
+            from .admin import admin_menu  # import هنا عشان يكون متوافق
             bot.send_message(uid, "🎛 لوحة تحكم الأدمن", reply_markup=admin_menu())
