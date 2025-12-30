@@ -1,19 +1,21 @@
-from telebot import types
-from config import ADMINS
-from database import get_connection
+from config import ADMINS, SYRIATEL_CASH_NUMBER, SHAM_CASH_CODE
+from database import cursor, conn
 
-def admin_handlers(bot):
+def register(bot):
 
-    @bot.message_handler(commands=['admin'])
-    def admin_panel(message):
-        if message.from_user.id not in ADMINS:
-            bot.send_message(message.chat.id, "❌ أنت لست الأدمن.")
-            return
-        kb = types.InlineKeyboardMarkup(row_width=2)
-        kb.add(
-            types.InlineKeyboardButton("🔍 بحث عن مستخدم", callback_data="search_user"),
-            types.InlineKeyboardButton("💰 شحن/سحب رصيد", callback_data="manage_balance"),
-            types.InlineKeyboardButton("📄 مراجعة العمليات", callback_data="review_transactions"),
-            types.InlineKeyboardButton("🛠 الرد على الدعم", callback_data="support_admin")
+    @bot.callback_query_handler(func=lambda c: c.data.startswith("dep_"))
+    def deposit(call):
+        _, method, amount = call.data.split("_")
+        method_name = "سيرياتيل كاش" if method == "sy" else "شام كاش"
+
+        cursor.execute(
+            "INSERT INTO deposits (user_id, amount, method, status) VALUES (?,?,?,?)",
+            (call.message.chat.id, amount, method_name, "pending")
         )
-        bot.send_message(message.chat.id, "لوحة تحكم الأدمن:", reply_markup=kb)
+        conn.commit()
+
+        info = SYRIATEL_CASH_NUMBER if method == "sy" else SHAM_CASH_CODE
+        bot.send_message(call.message.chat.id, f"📲 حوّل على:\n{info}\nثم أرسل صورة التأكيد")
+
+        for admin in ADMINS:
+            bot.send_message(admin, f"💰 طلب إيداع\nالمبلغ: {amount}\nالطريقة: {method_name}")
