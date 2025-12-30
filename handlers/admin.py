@@ -1,21 +1,33 @@
-from config import ADMINS, SYRIATEL_CASH_NUMBER, SHAM_CASH_CODE
-from database import cursor, conn
+from database import init_db
+from keyboards.admin import admin_menu
+from keyboards.main import main_menu
+from config import ADMINS
 
-def register(bot):
+conn, cur = init_db()
+admin_state = {}
+temp = {}
 
-    @bot.callback_query_handler(func=lambda c: c.data.startswith("dep_"))
-    def deposit(call):
-        _, method, amount = call.data.split("_")
-        method_name = "سيرياتيل كاش" if method == "sy" else "شام كاش"
+def register_admin(bot):
 
-        cursor.execute(
-            "INSERT INTO deposits (user_id, amount, method, status) VALUES (?,?,?,?)",
-            (call.message.chat.id, amount, method_name, "pending")
-        )
-        conn.commit()
+    @bot.message_handler(func=lambda m: m.chat.id in admin_state)
+    def admin_steps(message):
+        uid = message.chat.id
+        step = admin_state[uid]
 
-        info = SYRIATEL_CASH_NUMBER if method == "sy" else SHAM_CASH_CODE
-        bot.send_message(call.message.chat.id, f"📲 حوّل على:\n{info}\nثم أرسل صورة التأكيد")
+        # إضافة رصيد يدوي
+        if step == "add_id":
+            temp[uid] = int(message.text)
+            admin_state[uid] = "add_amount"
+            bot.send_message(uid, "💰 أرسل المبلغ")
 
-        for admin in ADMINS:
-            bot.send_message(admin, f"💰 طلب إيداع\nالمبلغ: {amount}\nالطريقة: {method_name}")
+        elif step == "add_amount":
+            cur.execute("UPDATE users SET balance = balance + ? WHERE telegram_id=?",
+                        (int(message.text), temp[uid]))
+            conn.commit()
+            bot.send_message(uid, "✅ تم إضافة الرصيد")
+            bot.send_message(temp[uid], f"💰 تم شحن رصيدك: {message.text}")
+            # سجل العملية
+            cur.execute("INSERT INTO logs (telegram_id, action, details) VALUES (?,?,?)",
+                        (temp[uid], "إضافة رصيد يدوي", f"المبلغ: {message.text}"))
+            conn.commit()
+            admin_state.pop(uid)
