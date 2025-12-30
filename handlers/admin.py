@@ -1,6 +1,6 @@
 from database import init_db
-from keyboards.admin import admin_menu
-from keyboards.main import main_menu
+from .admin import admin_menu  # صححت المسار
+from .commands import main_menu  # صححت المسار
 from config import ADMINS
 
 conn, cur = init_db()
@@ -14,7 +14,6 @@ def register_admin(bot):
         uid = message.chat.id
         step = admin_state[uid]
 
-        # إضافة رصيد يدوي
         if step == "add_id":
             temp[uid] = int(message.text)
             admin_state[uid] = "add_amount"
@@ -26,7 +25,6 @@ def register_admin(bot):
             conn.commit()
             bot.send_message(uid, "✅ تم إضافة الرصيد")
             bot.send_message(temp[uid], f"💰 تم شحن رصيدك: {message.text}")
-            # سجل العملية
             cur.execute("INSERT INTO logs (telegram_id, action, details) VALUES (?,?,?)",
                         (temp[uid], "إضافة رصيد يدوي", f"المبلغ: {message.text}"))
             conn.commit()
