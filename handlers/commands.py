@@ -1,5 +1,5 @@
 from telebot import types
-from keyboards.main import main_menu
+from .main import main_menu  # صححت المسار
 from database import init_db
 
 conn, cur = init_db()
