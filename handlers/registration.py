@@ -1,210 +1,125 @@
 from aiogram import types
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.types import ReplyKeyboardRemove, ContentType
+from aiogram.types import ReplyKeyboardRemove
 from database import db
-from keyboards.registration import *
+from keyboards.registration_simple import *
 from config import Config
-import re
+import hashlib
 
-class RegistrationStates(StatesGroup):
-    waiting_for_phone = State()
-    waiting_for_email = State()
-    waiting_for_country = State()
-    waiting_for_id_card = State()
-    waiting_for_selfie = State()
-    waiting_for_confirmation = State()
+class SimpleRegistrationStates(StatesGroup):
+    waiting_for_username = State()
+    waiting_for_password = State()
+    waiting_for_phone = State()  # اختياري
 
-async def start_registration(message: types.Message):
-    """بدء عملية التسجيل"""
-    # التحقق إذا كان لدى المستخدم حساب مرفوض
+async def start_simple_registration(message: types.Message):
+    """بدء تسجيل مبسط"""
     user = db.get_user(message.from_user.id)
     
-    if user and user['status'] == 'rejected':
-        await message.answer(
-            f"⚠️ طلب التسجيل السابق مرفوض\n"
-            f"السبب: {user['rejection_reason']}\n\n"
-            f"هل تريد إعادة التسجيل؟",
-            reply_markup=retry_registration_keyboard()
-        )
-        return
-    
-    if user and user['status'] == 'active':
+    if user:
         await message.answer("✅ لديك حساب نشط بالفعل!")
         return
     
     await message.answer(
         "📝 **إنشاء حساب جديد**\n\n"
-        "لإنشاء حساب، نحتاج للمعلومات التالية:\n"
-        "1. رقم الهاتف\n"
-        "2. البريد الإلكتروني\n"
-        "3. الدولة\n"
-        "4. صورة الهوية\n"
-        "5. سيلفي مع الهوية\n\n"
-        "📱 **الخطوة الأولى:** أرسل رقم هاتفك (مثال: 0996099355)",
+        "لإنشاء حساب، أدخل المعلومات التالية:\n\n"
+        "👤 **الخطوة 1:** أرسل اسم المستخدم المطلوب\n"
+        "⚡ يجب أن يكون بين 3-20 حرفاً\n"
+        "⚡ يمكن أن يحتوي على أحرف وأرقام و _",
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardRemove()
     )
-    await RegistrationStates.waiting_for_phone.set()
+    await SimpleRegistrationStates.waiting_for_username.set()
 
-async def process_phone(message: types.Message, state: FSMContext):
-    """معالجة رقم الهاتف"""
-    phone = message.text.strip()
+async def process_username(message: types.Message, state: FSMContext):
+    """معالجة اسم المستخدم"""
+    username = message.text.strip()
     
-    # التحقق من رقم الهاتف السوري
-    if not re.match(r'^09\d{8}$', phone):
-        await message.answer("❌ رقم الهاتف غير صحيح. الرجاء إدخال رقم سوري صحيح (مثال: 0996099355)")
+    # التحقق من صحة اسم المستخدم
+    if len(username) < 3 or len(username) > 20:
+        await message.answer("❌ اسم المستخدم يجب أن يكون بين 3-20 حرفاً")
         return
     
-    # التحقق إذا الرقم مسجل مسبقاً
-    if db.is_phone_registered(phone):
-        await message.answer("❌ هذا الرقم مسجل بالفعل في حساب آخر")
+    if not username.replace('_', '').isalnum():
+        await message.answer("❌ يمكن استخدام أحرف إنجليزية وأرقام و _ فقط")
         return
     
-    await state.update_data(phone=phone)
+    # التحقق إذا كان اسم المستخدم مستخدم مسبقاً
+    if db.is_username_taken(username):
+        await message.answer("❌ اسم المستخدم هذا مستخدم بالفعل. اختر اسماً آخر")
+        return
+    
+    await state.update_data(username=username)
+    
     await message.answer(
-        "📧 **الخطوة الثانية:** أرسل بريدك الإلكتروني",
+        "🔐 **الخطوة 2:** أرسل كلمة السر\n"
+        "⚡ يجب أن تكون بين 6-30 حرفاً\n"
+        "⚡ يفضل أن تحتوي على أحرف وأرقام",
         parse_mode="Markdown"
     )
-    await RegistrationStates.waiting_for_email.set()
+    await SimpleRegistrationStates.waiting_for_password.set()
 
-async def process_email(message: types.Message, state: FSMContext):
-    """معالجة البريد الإلكتروني"""
-    email = message.text.strip()
+async def process_password(message: types.Message, state: FSMContext):
+    """معالجة كلمة السر"""
+    password = message.text.strip()
     
-    # تحقق بسيط من صحة الإيميل
-    if '@' not in email or '.' not in email:
-        await message.answer("❌ البريد الإلكتروني غير صحيح. الرجاء إدخال بريد صحيح")
+    if len(password) < 6 or len(password) > 30:
+        await message.answer("❌ كلمة السر يجب أن تكون بين 6-30 حرفاً")
         return
     
-    if db.is_email_registered(email):
-        await message.answer("❌ هذا البريد مسجل بالفعل في حساب آخر")
-        return
+    # تشفير كلمة السر
+    password_hash = hashlib.sha256(password.encode()).hexdigest()
     
-    await state.update_data(email=email)
+    await state.update_data(password_hash=password_hash)
+    
     await message.answer(
-        "🌍 **الخطوة الثالثة:** أرسل اسم دولتك",
+        "📱 **الخطوة 3 (اختياري):** أرسل رقم هاتفك\n\n"
+        "💡 يمكنك تخطي هذه الخطوة بالضغط على /skip\n"
+        "📞 مثال: 0991234567",
         parse_mode="Markdown",
-        reply_markup=country_keyboard()
+        reply_markup=skip_phone_keyboard()
     )
-    await RegistrationStates.waiting_for_country.set()
+    await SimpleRegistrationStates.waiting_for_phone.set()
 
-async def process_country(message: types.Message, state: FSMContext):
-    """معالجة الدولة"""
-    country = message.text.strip()
-    await state.update_data(country=country)
-    await message.answer(
-        "🆔 **الخطوة الرابعة:** أرسل صورة هويتك (جواز سفر أو رخصة قيادة أو هوية)\n\n"
-        "⚠️ يجب أن تكون الصورة واضحة وتظهر جميع البيانات",
-        parse_mode="Markdown"
-    )
-    await RegistrationStates.waiting_for_id_card.set()
-
-async def process_id_card(message: types.Message, state: FSMContext):
-    """معالجة صورة الهوية"""
-    if not message.photo:
-        await message.answer("❌ الرجاء إرسال صورة الهوية")
-        return
+async def process_phone_or_skip(message: types.Message, state: FSMContext):
+    """معالجة رقم الهاتف أو التخطي"""
+    if message.text == '/skip':
+        phone = None
+    else:
+        phone = message.text.strip()
+        
+        # تحقق بسيط من رقم الهاتف
+        if not phone.isdigit() or len(phone) != 10 or not phone.startswith('09'):
+            await message.answer("❌ رقم الهاتف غير صحيح. استخدم /skip للتخطي")
+            return
+        
+        if db.is_phone_registered(phone):
+            await message.answer("❌ هذا الرقم مسجل بالفعل. استخدم /skip للتخطي")
+            return
     
-    # حفظ صورة الهوية
-    id_card_file_id = message.photo[-1].file_id
-    await state.update_data(id_card=id_card_file_id)
-    
-    await message.answer(
-        "🤳 **الخطوة الخامسة:** أرسل سيلفي مع هويتك\n\n"
-        "⚠️ يجب أن تكون واضحة وتظهر وجهك والهوية معاً",
-        parse_mode="Markdown"
-    )
-    await RegistrationStates.waiting_for_selfie.set()
-
-async def process_selfie(message: types.Message, state: FSMContext):
-    """معالجة صورة السيلفي"""
-    if not message.photo:
-        await message.answer("❌ الرجاء إرسال صورة السيلفي")
-        return
-    
-    selfie_file_id = message.photo[-1].file_id
-    await state.update_data(selfie=selfie_file_id)
-    
-    # عرض جميع البيانات للمراجعة
     data = await state.get_data()
     
-    summary = f"""
-📋 **ملخص البيانات للمراجعة:**
-
-📱 **الهاتف:** {data['phone']}
-📧 **الإيميل:** {data['email']}
-🌍 **الدولة:** {data['country']}
-🆔 **الهوية:** ✅ مرفوعة
-🤳 **السيلفي:** ✅ مرفوع
-
-⚠️ **ملاحظة:** سيتم مراجعة طلبك من الإدارة خلال 24 ساعة
-✅ **سيتم إعلامك فور الموافقة**
-    """
+    # إنشاء الحساب
+    db.create_simple_user(
+        telegram_id=message.from_user.id,
+        username=data['username'],
+        password_hash=data['password_hash'],
+        phone_number=phone,
+        first_name=message.from_user.first_name,
+        last_name=message.from_user.last_name
+    )
     
-    await message.answer_photo(
-        photo=selfie_file_id,
-        caption=summary,
+    await message.answer(
+        f"🎉 **تم إنشاء حسابك بنجاح!**\n\n"
+        f"👤 **اسم المستخدم:** {data['username']}\n"
+        f"📱 **الهاتف:** {phone if phone else 'غير مضاف'}\n"
+        f"💰 **الرصيد الحالي:** {Config.CURRENCY_SYMBOL}0\n\n"
+        f"✅ يمكنك الآن استخدام جميع الخدمات:\n"
+        f"• /deposit - شحن الرصيد\n"
+        f"• /balance - عرض الرصيد\n"
+        f"• /withdraw - سحب الأرباح",
         parse_mode="Markdown",
-        reply_markup=confirm_registration_keyboard()
-    )
-    await RegistrationStates.waiting_for_confirmation.set()
-
-async def confirm_registration(callback: types.CallbackQuery, state: FSMContext):
-    """تأكيد التسجيل وإرساله للإدارة"""
-    data = await state.get_data()
-    user = callback.from_user
-    
-    # حفظ المستخدم بحالة pending
-    db.create_pending_user(
-        telegram_id=user.id,
-        username=user.username,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        phone=data['phone'],
-        email=data['email'],
-        country=data['country'],
-        id_card_image=data['id_card'],
-        selfie_image=data['selfie']
+        reply_markup=main_menu_after_registration()
     )
     
-    # إرسال للإدارة للموافقة
-    from bot import bot
-    admin_message = f"""
-📋 **طلب تسجيل جديد #{user.id}**
-
-👤 **المستخدم:** {user.first_name} {user.last_name or ''}
-🆔 **Username:** @{user.username or 'لا يوجد'}
-📱 **الهاتف:** {data['phone']}
-📧 **الإيميل:** {data['email']}
-🌍 **الدولة:** {data['country']}
-📅 **التاريخ:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
-    """
-    
-    for admin_id in Config.ADMIN_IDS:
-        try:
-            # إرسال صورة الهوية
-            await bot.send_photo(
-                chat_id=admin_id,
-                photo=data['id_card'],
-                caption=f"{admin_message}\n\n🆔 **صورة الهوية:**"
-            )
-            
-            # إرسال صورة السيلفي
-            await bot.send_photo(
-                chat_id=admin_id,
-                photo=data['selfie'],
-                caption="🤳 **صورة السيلفي مع الهوية**",
-                reply_markup=admin_approval_keyboard(user.id)
-            )
-        except Exception as e:
-            print(f"خطأ في إرسال للإدارة: {e}")
-    
-    await callback.message.edit_caption(
-        "✅ **تم إرسال طلب التسجيل للإدارة**\n\n"
-        "⏳ جاري مراجعة البيانات...\n"
-        "📩 سيتم إعلامك فور الموافقة على حسابك",
-        reply_markup=None
-    )
     await state.finish()
-    await callback.answer()
