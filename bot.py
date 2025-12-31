@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import sys
+import os
 from aiogram import Bot, Dispatcher
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.types import BotCommand
@@ -18,10 +19,15 @@ from handlers.admin import *
 # استيراد الحالات
 from handlers.states import *
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout
+)
 logger = logging.getLogger(__name__)
 
 async def set_bot_commands(bot: Bot):
+    """تعيين أوامر البوت"""
     commands = [
         BotCommand(command="start", description="بدء البوت"),
         BotCommand(command="balance", description="رصيدي"),
@@ -29,25 +35,12 @@ async def set_bot_commands(bot: Bot):
         BotCommand(command="withdraw", description="سحب الأرباح"),
         BotCommand(command="history", description="السجل"),
         BotCommand(command="support", description="الدعم"),
-        BotCommand(command="admin", description="الإدارة")
+        BotCommand(command="admin", description="لوحة الإدارة")
     ]
     await bot.set_my_commands(commands)
 
-async def main():
-    # التحقق من التوكن
-    if not Config.BOT_TOKEN:
-        logger.error("❌ لم يتم تعيين BOT_TOKEN في ملف .env")
-        print("🔧 أضف التوكن في ملف .env:")
-        print("BOT_TOKEN=توكن_البوت_هنا")
-        return
-    
-    bot = Bot(token=Config.BOT_TOKEN)
-    storage = MemoryStorage()
-    dp = Dispatcher(bot, storage=storage)
-    
-    await set_bot_commands(bot)
-    
-    # ===== تسجيل المعالجات =====
+def setup_handlers(dp: Dispatcher):
+    """إعداد جميع المعالجات"""
     
     # الأوامر الأساسية
     dp.register_message_handler(cmd_start, commands=['start'])
@@ -84,14 +77,41 @@ async def main():
     
     # إلغاء
     dp.register_message_handler(cancel_handler, commands=['cancel'], state="*")
+
+async def main():
+    # التحقق من التوكن على Render
+    token = os.getenv("BOT_TOKEN")
     
-    # بدء البوت
-    logger.info("🚀 بدء تشغيل البوت...")
+    if not token:
+        logger.error("❌ لم يتم تعيين BOT_TOKEN في Environment Variables على Render")
+        logger.info("🔧 أضف BOT_TOKEN في Render Dashboard → Environment")
+        return
+    
+    # تحديث التوكن في Config
+    Config.BOT_TOKEN = token
+    
+    bot = Bot(token=Config.BOT_TOKEN)
+    storage = MemoryStorage()
+    dp = Dispatcher(bot, storage=storage)
+    
+    await set_bot_commands(bot)
+    setup_handlers(dp)
+    
+    logger.info("🚀 بدء تشغيل البوت على Render...")
+    logger.info(f"✅ التوكن: {token[:15]}...")
+    logger.info(f"✅ الإدارة: {Config.ADMIN_IDS}")
+    
     try:
         await dp.start_polling()
+    except Exception as e:
+        logger.error(f"❌ خطأ في التشغيل: {e}")
     finally:
         await dp.storage.close()
         await dp.storage.wait_closed()
 
 if __name__ == '__main__':
+    # التحقق إذا نحن على Render
+    if os.getenv('RENDER'):
+        logger.info("🌐 التشغيل على Render.com")
+    
     asyncio.run(main())
