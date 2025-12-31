@@ -14,6 +14,3 @@ class WithdrawalStates(StatesGroup):
     waiting_for_amount = State()
     waiting_for_method = State()
     waiting_for_wallet = State()
-
-class SupportStates(StatesGroup):
-    waiting_for_message = State()
