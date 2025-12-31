@@ -1,15 +1,15 @@
-# أمان: لا تشارك هذا الملف مع أحد
-BOT_TOKEN=8167728652:AAHkmA95NJaNle90-X0o2rct8ZoJZS_T8C8
+# ⚠️ أمان: لا تشارك هذا الملف مع أحد
+BOT_TOKEN=7871329256:AAHQmIQe_c3eURL3PlgnO6OqiM0p7gOh8gQ
 ADMIN_IDS=8219716285
-SUPPORT_USERNAME=@Throne558
+SUPPORT_USERNAME=@support
 
 # إعدادات الدفع
 CURRENCY=S.P
 MIN_DEPOSIT=25000
 MIN_WITHDRAWAL=50000
-WITHDRAWAL_FEE=0.05  # 5%
+WITHDRAWAL_FEE=0.05
 
-# معلومات الحسابات (يمكن تخزينها بشكل مشفر)
+# معلومات الحسابات
 SHAM_CASH_HASH=19f013ef640f4ab20aace84b8a617bd6
 SYRIATEL_CASH=0996099355
 ETHEREUM_ADDRESS=0x2abf01f2d131b83f7a9b2b9642638ebcaab67c43
