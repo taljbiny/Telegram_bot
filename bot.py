@@ -1,24 +1,9 @@
+import os
+import sys
 import asyncio
 import logging
-import sys
-import os
-from aiogram import Bot, Dispatcher
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.types import BotCommand
 
-from config import Config
-from database import db
-
-# استيراد المعالجات
-from handlers.commands import *
-from handlers.registration import *
-from handlers.deposit import *
-from handlers.withdraw import *
-from handlers.admin import *
-
-# استيراد الحالات
-from handlers.states import *
-
+# إعدادات التسجيل
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -26,92 +11,92 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-async def set_bot_commands(bot: Bot):
-    """تعيين أوامر البوت"""
-    commands = [
-        BotCommand(command="start", description="بدء البوت"),
-        BotCommand(command="balance", description="رصيدي"),
-        BotCommand(command="deposit", description="شحن الرصيد"),
-        BotCommand(command="withdraw", description="سحب الأرباح"),
-        BotCommand(command="history", description="السجل"),
-        BotCommand(command="support", description="الدعم"),
-        BotCommand(command="admin", description="لوحة الإدارة")
-    ]
-    await bot.set_my_commands(commands)
-
-def setup_handlers(dp: Dispatcher):
-    """إعداد جميع المعالجات"""
-    
-    # الأوامر الأساسية
-    dp.register_message_handler(cmd_start, commands=['start'])
-    dp.register_message_handler(cmd_balance, commands=['balance'])
-    dp.register_message_handler(cmd_history, commands=['history'])
-    dp.register_message_handler(cmd_support, commands=['support'])
-    
-    # التسجيل
-    dp.register_message_handler(start_registration, commands=['register'])
-    dp.register_message_handler(process_username, state=RegistrationStates.waiting_for_username)
-    dp.register_message_handler(process_password, state=RegistrationStates.waiting_for_password)
-    dp.register_message_handler(process_phone, state=RegistrationStates.waiting_for_phone)
-    dp.register_callback_query_handler(skip_phone, lambda c: c.data == 'skip_phone')
-    
-    # الإيداع
-    dp.register_message_handler(start_deposit, commands=['deposit'])
-    dp.register_callback_query_handler(process_deposit_method, lambda c: c.data.startswith('deposit_'))
-    dp.register_message_handler(process_deposit_amount, state=DepositStates.waiting_for_amount)
-    dp.register_message_handler(process_transaction_id, state=DepositStates.waiting_for_transaction_id)
-    dp.register_callback_query_handler(cancel_deposit, lambda c: c.data == 'cancel_deposit')
-    
-    # السحب
-    dp.register_message_handler(start_withdrawal, commands=['withdraw'])
-    dp.register_message_handler(process_withdrawal_amount, state=WithdrawalStates.waiting_for_amount)
-    dp.register_callback_query_handler(process_withdrawal_method, lambda c: c.data.startswith('withdraw_'))
-    dp.register_message_handler(process_wallet_info, state=WithdrawalStates.waiting_for_wallet)
-    
-    # الإدارة
-    dp.register_message_handler(admin_panel, commands=['admin'])
-    dp.register_message_handler(admin_deposits, commands=['admin_deposits'])
-    dp.register_message_handler(admin_withdrawals, commands=['admin_withdrawals'])
-    dp.register_callback_query_handler(admin_approve_deposit, lambda c: c.data.startswith('admin_approve_deposit_'))
-    dp.register_callback_query_handler(admin_approve_withdrawal, lambda c: c.data.startswith('admin_approve_withdrawal_'))
-    
-    # إلغاء
-    dp.register_message_handler(cancel_handler, commands=['cancel'], state="*")
-
 async def main():
-    # التحقق من التوكن على Render
-    token = os.getenv("BOT_TOKEN")
+    logger.info("🚀 بدء تشغيل البوت على Render...")
     
-    if not token:
-        logger.error("❌ لم يتم تعيين BOT_TOKEN في Environment Variables على Render")
-        logger.info("🔧 أضف BOT_TOKEN في Render Dashboard → Environment")
+    # الحصول على التوكن
+    BOT_TOKEN = os.getenv("BOT_TOKEN")
+    
+    if not BOT_TOKEN:
+        logger.error("❌ BOT_TOKEN غير موجود في Environment Variables")
+        logger.info("🔧 أضفه في Render Dashboard → Environment")
         return
     
-    # تحديث التوكن في Config
-    Config.BOT_TOKEN = token
+    logger.info(f"✅ التوكن: {BOT_TOKEN[:10]}...")
     
-    bot = Bot(token=Config.BOT_TOKEN)
-    storage = MemoryStorage()
-    dp = Dispatcher(bot, storage=storage)
-    
-    await set_bot_commands(bot)
-    setup_handlers(dp)
-    
-    logger.info("🚀 بدء تشغيل البوت على Render...")
-    logger.info(f"✅ التوكن: {token[:15]}...")
-    logger.info(f"✅ الإدارة: {Config.ADMIN_IDS}")
-    
+    # محاولة استيراد aiogram
     try:
-        await dp.start_polling()
-    except Exception as e:
-        logger.error(f"❌ خطأ في التشغيل: {e}")
-    finally:
-        await dp.storage.close()
-        await dp.storage.wait_closed()
+        from aiogram import Bot, Dispatcher, types
+        from aiogram.contrib.fsm_storage.memory import MemoryStorage
+        logger.info("✅ تم تحميل aiogram بنجاح")
+    except ImportError:
+        logger.error("❌ aiogram غير مثبت")
+        logger.info("🔧 جاري التثبيت...")
+        import subprocess
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "aiogram[fast]"])
+        from aiogram import Bot, Dispatcher, types
+        from aiogram.contrib.fsm_storage.memory import MemoryStorage
+        logger.info("✅ تم تثبيت aiogram")
+    
+    # تهيئة البوت
+    bot = Bot(token=BOT_TOKEN)
+    dp = Dispatcher(bot, storage=MemoryStorage())
+    
+    # الأوامر الأساسية
+    @dp.message_handler(commands=['start'])
+    async def cmd_start(message: types.Message):
+        await message.answer("🎉 **البوت شغال على Render!**\n\n/help للمساعدة", parse_mode="Markdown")
+    
+    @dp.message_handler(commands=['help'])
+    async def cmd_help(message: types.Message):
+        await message.answer(
+            "📋 **الأوامر المتاحة:**\n"
+            "/start - بدء البوت\n"
+            "/deposit - شحن الرصيد\n"
+            "/withdraw - سحب الأرباح\n"
+            "/balance - رصيدي\n"
+            "/admin - لوحة الإدارة",
+            parse_mode="Markdown"
+        )
+    
+    @dp.message_handler(commands=['deposit'])
+    async def cmd_deposit(message: types.Message):
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        
+        keyboard = InlineKeyboardMarkup(row_width=2)
+        keyboard.add(
+            InlineKeyboardButton("💳 شام كاش", callback_data="deposit_sham"),
+            InlineKeyboardButton("📱 سيرياتيل", callback_data="deposit_syriatel")
+        )
+        
+        await message.answer(
+            "💳 **اختر طريقة الدفع:**\n\n"
+            "💰 الحد الأدنى: 25,000 S.P",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+    
+    # التحقق من الإدارة
+    ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "8219716285").split(',')]
+    
+    @dp.message_handler(commands=['admin'])
+    async def cmd_admin(message: types.Message):
+        if message.from_user.id in ADMIN_IDS:
+            await message.answer("👑 **لوحة الإدارة**\n\n📊 جاهزة للاستخدام", parse_mode="Markdown")
+        else:
+            await message.answer("⛔ غير مصرح لك")
+    
+    # بدء البوت
+    logger.info("🤖 البوت جاهز لاستقبال الرسائل...")
+    await dp.start_polling()
 
-if __name__ == '__main__':
-    # التحقق إذا نحن على Render
+if __name__ == "__main__":
     if os.getenv('RENDER'):
         logger.info("🌐 التشغيل على Render.com")
     
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("⏹️ إيقاف البوت...")
+    except Exception as e:
+        logger.error(f"❌ خطأ: {e}")
