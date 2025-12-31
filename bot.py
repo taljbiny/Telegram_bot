@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+import sys
 from aiogram import Bot, Dispatcher
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.types import BotCommand
@@ -20,7 +22,8 @@ from handlers.states import *
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout
 )
 logger = logging.getLogger(__name__)
 
@@ -37,20 +40,8 @@ async def set_bot_commands(bot: Bot):
     ]
     await bot.set_my_commands(commands)
 
-async def main():
-    # التحقق من التوكن
-    if not Config.BOT_TOKEN or Config.BOT_TOKEN == "ضع_التوكن_هنا":
-        logger.error("❌ لم يتم تعيين توكن البوت في ملف .env")
-        return
-    
-    bot = Bot(token=Config.BOT_TOKEN)
-    storage = MemoryStorage()
-    dp = Dispatcher(bot, storage=storage)
-    
-    await set_bot_commands(bot)
-    
-    # ========== تسجيل معالجي الأوامر ==========
-    
+def setup_handlers(dp: Dispatcher):
+    """إعداد جميع المعالجات"""
     # الأوامر الأساسية
     dp.register_message_handler(cmd_start, commands=['start'])
     dp.register_message_handler(cmd_balance, commands=['balance'])
@@ -99,10 +90,28 @@ async def main():
     # إلغاء
     dp.register_message_handler(cancel_handler, commands=['cancel'], state="*")
     dp.register_callback_query_handler(cancel_handler_callback, lambda c: c.data.startswith('cancel'), state="*")
+
+async def main():
+    # التحقق من التوكن
+    if not Config.BOT_TOKEN or Config.BOT_TOKEN == "ضع_التوكن_هنا":
+        logger.error("❌ لم يتم تعيين توكن البوت في ملف .env")
+        # على Render، استخدم متغيرات البيئة
+        token = os.getenv('BOT_TOKEN')
+        if not token:
+            logger.error("❌ لم يتم العثور على BOT_TOKEN في متغيرات البيئة")
+            return
+        # تحديث التوكن في Config
+        Config.BOT_TOKEN = token
     
-    # بدء البوت
+    bot = Bot(token=Config.BOT_TOKEN)
+    storage = MemoryStorage()
+    dp = Dispatcher(bot, storage=storage)
+    
+    await set_bot_commands(bot)
+    setup_handlers(dp)
+    
     try:
-        logger.info("🚀 بدء تشغيل البوت...")
+        logger.info("🚀 بدء تشغيل البوت على Render...")
         await dp.start_polling()
     except Exception as e:
         logger.error(f"❌ خطأ في تشغيل البوت: {e}")
@@ -111,4 +120,8 @@ async def main():
         await dp.storage.wait_closed()
 
 if __name__ == '__main__':
+    # التحقق من أننا على Render
+    if os.getenv('RENDER'):
+        logger.info("🌐 التشغيل على Render")
+    
     asyncio.run(main())
