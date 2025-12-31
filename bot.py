@@ -3,7 +3,6 @@ import sys
 import asyncio
 import logging
 
-# إعدادات التسجيل
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -18,46 +17,34 @@ async def main():
     BOT_TOKEN = os.getenv("BOT_TOKEN")
     
     if not BOT_TOKEN:
-        logger.error("❌ BOT_TOKEN غير موجود في Environment Variables")
-        logger.info("🔧 أضفه في Render Dashboard → Environment")
+        logger.error("❌ BOT_TOKEN غير موجود")
         return
     
     logger.info(f"✅ التوكن: {BOT_TOKEN[:10]}...")
     
-    # محاولة استيراد aiogram
+    # تثبيت aiogram 2.x إذا لم يكن مثبت
     try:
         from aiogram import Bot, Dispatcher, types
         from aiogram.contrib.fsm_storage.memory import MemoryStorage
-        logger.info("✅ تم تحميل aiogram بنجاح")
+        logger.info("✅ aiogram 2.x محمل")
     except ImportError:
-        logger.error("❌ aiogram غير مثبت")
-        logger.info("🔧 جاري التثبيت...")
+        logger.info("🔧 تثبيت aiogram 2.x...")
         import subprocess
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "aiogram[fast]"])
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "aiogram==2.25.1"])
         from aiogram import Bot, Dispatcher, types
         from aiogram.contrib.fsm_storage.memory import MemoryStorage
-        logger.info("✅ تم تثبيت aiogram")
     
-    # تهيئة البوت
+    # إنشاء البوت
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher(bot, storage=MemoryStorage())
     
-    # الأوامر الأساسية
     @dp.message_handler(commands=['start'])
     async def cmd_start(message: types.Message):
-        await message.answer("🎉 **البوت شغال على Render!**\n\n/help للمساعدة", parse_mode="Markdown")
+        await message.answer("🎉 **البوت شغال!**\n\n✅ التسجيل: /register\n💰 الإيداع: /deposit")
     
-    @dp.message_handler(commands=['help'])
-    async def cmd_help(message: types.Message):
-        await message.answer(
-            "📋 **الأوامر المتاحة:**\n"
-            "/start - بدء البوت\n"
-            "/deposit - شحن الرصيد\n"
-            "/withdraw - سحب الأرباح\n"
-            "/balance - رصيدي\n"
-            "/admin - لوحة الإدارة",
-            parse_mode="Markdown"
-        )
+    @dp.message_handler(commands=['register'])
+    async def cmd_register(message: types.Message):
+        await message.answer("📝 **التسجيل:**\nأرسل اسم المستخدم:")
     
     @dp.message_handler(commands=['deposit'])
     async def cmd_deposit(message: types.Message):
@@ -66,15 +53,28 @@ async def main():
         keyboard = InlineKeyboardMarkup(row_width=2)
         keyboard.add(
             InlineKeyboardButton("💳 شام كاش", callback_data="deposit_sham"),
-            InlineKeyboardButton("📱 سيرياتيل", callback_data="deposit_syriatel")
+            InlineKeyboardButton("📱 سيرياتيل", callback_data="deposit_syriatel"),
+            InlineKeyboardButton("₿ Ethereum", callback_data="deposit_ethereum")
         )
         
-        await message.answer(
-            "💳 **اختر طريقة الدفع:**\n\n"
-            "💰 الحد الأدنى: 25,000 S.P",
-            reply_markup=keyboard,
+        await message.answer("💳 **اختر طريقة الدفع:**", reply_markup=keyboard)
+    
+    @dp.callback_query_handler(lambda c: c.data.startswith('deposit_'))
+    async def process_deposit(callback_query: types.CallbackQuery):
+        method = callback_query.data.split('_')[1]
+        methods = {
+            'sham': 'شام كاش: 19f013ef640f4ab20aace84b8a617bd6',
+            'syriatel': 'سيرياتيل: 0996099355',
+            'ethereum': 'Ethereum: 0x2abf01f2d131b83f7a9b2b9642638ebcaab67c43'
+        }
+        
+        await callback_query.message.answer(
+            f"💳 **{method}**\n\n"
+            f"🆔 **الحساب:**\n{methods[method]}\n\n"
+            f"💰 **أدخل المبلغ:**",
             parse_mode="Markdown"
         )
+        await callback_query.answer()
     
     # التحقق من الإدارة
     ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "8219716285").split(',')]
@@ -82,21 +82,17 @@ async def main():
     @dp.message_handler(commands=['admin'])
     async def cmd_admin(message: types.Message):
         if message.from_user.id in ADMIN_IDS:
-            await message.answer("👑 **لوحة الإدارة**\n\n📊 جاهزة للاستخدام", parse_mode="Markdown")
+            await message.answer("👑 **لوحة الإدارة**\n\n📊 الإحصائيات قريباً...")
         else:
-            await message.answer("⛔ غير مصرح لك")
+            await message.answer("⛔ غير مصرح")
     
-    # بدء البوت
-    logger.info("🤖 البوت جاهز لاستقبال الرسائل...")
+    logger.info("🤖 البوت جاهز...")
     await dp.start_polling()
 
 if __name__ == "__main__":
-    if os.getenv('RENDER'):
-        logger.info("🌐 التشغيل على Render.com")
-    
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("⏹️ إيقاف البوت...")
+        logger.info("⏹️ إيقاف البوت")
     except Exception as e:
         logger.error(f"❌ خطأ: {e}")
