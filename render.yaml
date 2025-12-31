@@ -2,26 +2,16 @@ services:
   - type: web
     name: telegram-wallet-bot
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: |
+      pip install --upgrade pip
+      pip install wheel setuptools
+      pip install -r requirements.txt
     startCommand: python bot.py
+    autoDeploy: true
     envVars:
       - key: BOT_TOKEN
         sync: false
       - key: ADMIN_IDS
         value: "8219716285"
-      - key: SUPPORT_USERNAME
-        value: "@support"
       - key: CURRENCY
         value: "S.P"
-      - key: MIN_DEPOSIT
-        value: "25000"
-      - key: MIN_WITHDRAWAL
-        value: "50000"
-      - key: WITHDRAWAL_FEE
-        value: "0.05"
-      - key: SHAM_CASH_HASH
-        value: "19f013ef640f4ab20aace84b8a617bd6"
-      - key: SYRIATEL_CASH
-        value: "0996099355"
-      - key: ETHEREUM_ADDRESS
-        value: "0x2abf01f2d131b83f7a9b2b9642638ebcaab67c43"
