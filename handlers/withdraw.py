@@ -1,66 +1,62 @@
 from aiogram import types
 from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters.state import State, StatesGroup
 from database import db
-from keyboards.withdraw_advanced import *
+from keyboards.withdraw import *
+from keyboards.main import main_menu_keyboard
+from handlers.states import WithdrawalStates
 from config import Config
+from utils.helpers import format_currency, calculate_withdrawal
 
-class AdvancedWithdrawalStates(StatesGroup):
-    waiting_for_amount = State()
-    waiting_for_method = State()
-    waiting_for_wallet = State()
-
-async def start_advanced_withdrawal(message: types.Message):
-    """بدء سحب متقدم"""
+async def start_withdrawal(message: types.Message):
+    """بدء عملية السحب"""
     user_data = db.get_user(message.from_user.id)
     
     if not user_data:
-        await message.answer("⚠️ الرجاء إنشاء حساب أولاً")
+        await message.answer("⚠️ ليس لديك حساب")
         return
     
     if user_data['balance'] < Config.MIN_WITHDRAWAL:
         await message.answer(
             f"❌ رصيدك غير كافي للسحب\n"
-            f"الحد الأدنى: {Config.CURRENCY_SYMBOL}{Config.MIN_WITHDRAWAL:,.0f}\n"
-            f"رصيدك: {Config.CURRENCY_SYMBOL}{user_data['balance']:,.0f}"
+            f"📤 الحد الأدنى: {format_currency(Config.MIN_WITHDRAWAL)}\n"
+            f"💰 رصيدك: {format_currency(user_data['balance'])}"
         )
         return
     
     await message.answer(
-        f"🏧 **طلب سحب رصيد**\n\n"
-        f"💰 **رصيدك الحالي:** {Config.CURRENCY_SYMBOL}{user_data['balance']:,.0f}\n"
-        f"📤 **الحد الأدنى:** {Config.CURRENCY_SYMBOL}{Config.MIN_WITHDRAWAL:,.0f}\n"
+        f"🏧 **سحب الرصيد**\n\n"
+        f"💰 **رصيدك:** {format_currency(user_data['balance'])}\n"
+        f"📤 **الحد الأدنى:** {format_currency(Config.MIN_WITHDRAWAL)}\n"
         f"💸 **الرسوم:** {Config.WITHDRAWAL_FEE*100}%\n\n"
         f"🔢 **أدخل المبلغ المراد سحبه:**",
         parse_mode="Markdown",
-        reply_markup=cancel_withdrawal_keyboard()
+        reply_markup=cancel_keyboard()
     )
-    await AdvancedWithdrawalStates.waiting_for_amount.set()
+    await WithdrawalStates.waiting_for_amount.set()
 
-async def process_withdrawal_amount_advanced(message: types.Message, state: FSMContext):
+async def process_withdrawal_amount(message: types.Message, state: FSMContext):
     """معالجة مبلغ السحب"""
     user_data = db.get_user(message.from_user.id)
     
     try:
-        amount = float(message.text.replace(',', '').strip())
+        amount = float(message.text.replace(',', '').replace(' ', ''))
         
         # التحقق من المبلغ
         if amount < Config.MIN_WITHDRAWAL:
             await message.answer(
-                f"❌ الحد الأدنى للسحب: {Config.CURRENCY_SYMBOL}{Config.MIN_WITHDRAWAL:,.0f}"
+                f"❌ الحد الأدنى للسحب: {format_currency(Config.MIN_WITHDRAWAL)}"
             )
             return
         
         if amount > user_data['balance']:
             await message.answer(
                 f"❌ رصيدك غير كافي\n"
-                f"رصيدك: {Config.CURRENCY_SYMBOL}{user_data['balance']:,.0f}"
+                f"💰 رصيدك: {format_currency(user_data['balance'])}"
             )
             return
         
         # حساب الرسوم والمبلغ الصافي
-        fee = amount * Config.WITHDRAWAL_FEE
-        net_amount = amount - fee
+        fee, net_amount = calculate_withdrawal(amount)
         
         await state.update_data(
             amount=amount,
@@ -70,22 +66,23 @@ async def process_withdrawal_amount_advanced(message: types.Message, state: FSMC
         )
         
         await message.answer(
-            f"💰 **المبلغ:** {Config.CURRENCY_SYMBOL}{amount:,.0f}\n"
-            f"💸 **الرسوم ({Config.WITHDRAWAL_FEE*100}%):** {Config.CURRENCY_SYMBOL}{fee:,.0f}\n"
-            f"✅ **ستستلم:** {Config.CURRENCY_SYMBOL}{net_amount:,.0f}\n\n"
+            f"💰 **المبلغ المطلوب:** {format_currency(amount)}\n"
+            f"💸 **الرسوم ({Config.WITHDRAWAL_FEE*100}%):** {format_currency(fee)}\n"
+            f"✅ **ستستلم:** {format_currency(net_amount)}\n\n"
             f"💳 **اختر طريقة السحب:**",
             parse_mode="Markdown",
-            reply_markup=withdrawal_methods_advanced_keyboard()
+            reply_markup=withdraw_methods_keyboard()
         )
-        await AdvancedWithdrawalStates.waiting_for_method.set()
+        await WithdrawalStates.waiting_for_method.set()
         
     except ValueError:
         await message.answer("❌ الرجاء إدخال رقم صحيح")
 
-async def process_withdrawal_method_advanced(callback: types.CallbackQuery, state: FSMContext):
+async def process_withdrawal_method(callback: types.CallbackQuery, state: FSMContext):
     """معالجة طريقة السحب"""
-    method = callback.data.split('_')[1]  # withdraw_sham, withdraw_syriatel, etc.
+    method = callback.data.split('_')[1]
     
+    # أسماء الطرق
     method_names = {
         'sham': 'شام كاش',
         'syriatel': 'سيرياتيل كاش',
@@ -98,7 +95,7 @@ async def process_withdrawal_method_advanced(callback: types.CallbackQuery, stat
     await state.update_data(method=method, method_name=method_name)
     
     # طلب معلومات المحفظة بناءً على الطريقة
-    wallet_prompts = {
+    prompts = {
         'sham': "📱 أرسل رقم شام كاش (مثال: 09XXXXXXXX)",
         'syriatel': "📱 أرسل رقم سيرياتيل كاش",
         'ethereum': "🔗 أرسل عنوان محفظة الإيثيريوم",
@@ -106,14 +103,14 @@ async def process_withdrawal_method_advanced(callback: types.CallbackQuery, stat
         'bank': "🏦 أرسل معلومات الحساب البنكي (الاسم، رقم الحساب، IBAN)"
     }
     
-    prompt = wallet_prompts.get(method, "🔢 أرسل معلومات الاستلام")
+    prompt = prompts.get(method, "🔢 أرسل معلومات الاستلام")
     
     await callback.message.edit_text(
         f"💳 **طريقة السحب:** {method_name}\n\n"
         f"{prompt}:",
         parse_mode="Markdown"
     )
-    await AdvancedWithdrawalStates.waiting_for_wallet.set()
+    await WithdrawalStates.waiting_for_wallet.set()
     await callback.answer()
 
 async def process_wallet_info(message: types.Message, state: FSMContext):
@@ -122,22 +119,25 @@ async def process_wallet_info(message: types.Message, state: FSMContext):
     data = await state.get_data()
     user = message.from_user
     
-    # التحقق من صحة المعلومات بناءً على الطريقة
+    # التحقق من معلومات المحفظة
     if data['method'] in ['sham', 'syriatel']:
         if not wallet_info.isdigit() or len(wallet_info) != 10 or not wallet_info.startswith('09'):
             await message.answer("❌ رقم هاتف غير صحيح. يجب أن يبدأ بـ 09 ويتكون من 10 أرقام")
             return
     
-    # خصم المبلغ من الرصيد مؤقتاً
-    db.freeze_balance(user.id, data['amount'])
+    # تجميد المبلغ
+    user_data = db.get_user(user.id)
+    if not db.freeze_balance(user_data['id'], data['amount']):
+        await message.answer("❌ فشل في تجميد الرصيد. حاول مرة أخرى")
+        return
     
     # إنشاء طلب السحب
-    withdrawal_id = db.create_withdrawal_request_advanced(
-        user_id=user.id,
+    withdrawal_id = db.create_withdrawal(
+        user_id=user_data['id'],
         amount=data['amount'],
         fee=data['fee'],
         net_amount=data['net_amount'],
-        payment_method=data['method'],
+        method=data['method'],
         wallet_info=wallet_info
     )
     
@@ -147,21 +147,22 @@ async def process_wallet_info(message: types.Message, state: FSMContext):
 📤 **طلب سحب جديد #{withdrawal_id}**
 
 👤 **المستخدم:** {user.first_name} (@{user.username or user.id})
-💰 **المبلغ المطلوب:** {Config.CURRENCY_SYMBOL}{data['amount']:,.0f}
-💸 **الرسوم:** {Config.CURRENCY_SYMBOL}{data['fee']:,.0f}
-✅ **المبلغ الصافي:** {Config.CURRENCY_SYMBOL}{data['net_amount']:,.0f}
+💰 **المبلغ المطلوب:** {format_currency(data['amount'])}
+💸 **الرسوم:** {format_currency(data['fee'])}
+✅ **المبلغ الصافي:** {format_currency(data['net_amount'])}
 💳 **الطريقة:** {data['method_name']}
 📝 **معلومات الاستلام:** {wallet_info}
 📅 **الوقت:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
-    """
+
+💰 **رصيد المستخدم بعد السحب:** {format_currency(user_data['balance'] - data['amount'])}
+"""
     
     for admin_id in Config.ADMIN_IDS:
         try:
             await bot.send_message(
                 chat_id=admin_id,
                 text=admin_message,
-                reply_markup=admin_withdrawal_approval_keyboard(withdrawal_id, user.id),
-                parse_mode="Markdown"
+                reply_markup=admin_withdrawal_actions_keyboard(withdrawal_id, user.id)
             )
         except:
             pass
@@ -169,14 +170,20 @@ async def process_wallet_info(message: types.Message, state: FSMContext):
     await message.answer(
         f"✅ **تم إرسال طلب السحب للإدارة**\n\n"
         f"📋 **تفاصيل الطلب:**\n"
-        f"💰 المبلغ: {Config.CURRENCY_SYMBOL}{data['amount']:,.0f}\n"
-        f"💸 الرسوم: {Config.CURRENCY_SYMBOL}{data['fee']:,.0f}\n"
-        f"✅ ستحصل على: {Config.CURRENCY_SYMBOL}{data['net_amount']:,.0f}\n"
+        f"💰 المبلغ: {format_currency(data['amount'])}\n"
+        f"💸 الرسوم: {format_currency(data['fee'])}\n"
+        f"✅ ستحصل على: {format_currency(data['net_amount'])}\n"
         f"💳 الطريقة: {data['method_name']}\n"
         f"📝 المحفظة: {wallet_info}\n\n"
-        f"⏳ جاري المعالجة...\n"
+        f"⏳ **جاري المعالجة...**\n"
         f"📩 سيتم إعلامك فور الانتهاء",
-        parse_mode="Markdown"
+        parse_mode="Markdown",
+        reply_markup=main_menu_keyboard()
     )
     
     await state.finish()
+
+async def confirm_withdrawal_request(callback: types.CallbackQuery):
+    """تأكيد طلب السحب (للمستخدم)"""
+    withdrawal_id = int(callback.data.split('_')[2])
+    await callback.answer("✅ تم تأكيد إرسال الطلب")
