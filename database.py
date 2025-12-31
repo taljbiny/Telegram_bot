@@ -1,16 +1,20 @@
 import sqlite3
 import hashlib
+import os
 from datetime import datetime
 from config import Config
 
 class Database:
     def __init__(self):
+        # على Render، تأكد من وجود مجلد database
+        db_dir = os.path.dirname(Config.DATABASE_PATH)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir)
+        
         self.conn = sqlite3.connect(Config.DATABASE_PATH, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.create_tables()
-    
-    def create_tables(self):
-        cursor = self.conn.cursor()
+        logger.info(f"📁 قاعدة البيانات: {Config.DATABASE_PATH}")
         
         # جدول المستخدمين
         cursor.execute('''
