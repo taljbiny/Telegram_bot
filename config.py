@@ -17,29 +17,26 @@ class Config:
     
     MIN_DEPOSIT = float(os.getenv("MIN_DEPOSIT", 25000))
     MIN_WITHDRAWAL = float(os.getenv("MIN_WITHDRAWAL", 50000))
-    WITHDRAWAL_FEE = float(os.getenv("WITHDRAWAL_FEE", 0.05))  # 5%
+    WITHDRAWAL_FEE = float(os.getenv("WITHDRAWAL_FEE", 0.05))
     
     # === معلومات الدفع ===
     PAYMENT_METHODS = {
-        'sham_cash': {
+        'sham': {
             'name': 'شام كاش',
             'hash': os.getenv("SHAM_CASH_HASH"),
-            'instructions': 'أرسل المبلغ إلى الرمز أعلاه وأرفق الإيصال'
+            'instructions': 'أرسل المبلغ إلى الرمز أعلاه'
         },
-        'syriatel_cash': {
+        'syriatel': {
             'name': 'سيرياتيل كاش',
             'number': os.getenv("SYRIATEL_CASH"),
-            'instructions': 'أرسل المبلغ إلى الرقم أعلاه وأرفق الإيصال'
+            'instructions': 'أرسل المبلغ إلى الرقم أعلاه'
         },
         'ethereum': {
             'name': 'Ethereum',
             'address': os.getenv("ETHEREUM_ADDRESS"),
-            'instructions': 'أرسل المبلغ إلى العنوان أعلاه وأرفق هاش العملية'
+            'instructions': 'أرسل المبلغ إلى العنوان أعلاه'
         }
     }
     
     # === قاعدة البيانات ===
     DATABASE_PATH = "database/data.db"
-    
-    # === روابط ===
-    SUPPORT_LINK = f"https://t.me/{SUPPORT_USERNAME.lstrip('@')}"
